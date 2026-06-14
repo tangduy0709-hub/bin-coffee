@@ -21,9 +21,13 @@ export function MenuCard({ item, index }: MenuCardProps) {
   const [ice, setIce] = useState<'none' | 'light' | 'normal' | 'extra'>('normal')
   const [sugar, setSugar] = useState<'none' | 'light' | 'normal' | 'extra'>('normal')
 
+  const handleClose = () => {
+    setShowCustomize(false)
+  }
+
   const handleAddItem = () => {
     addItem(item, { ice, sugar })
-    setShowCustomize(false)
+    handleClose()
     setIce('normal')
     setSugar('normal')
   }
@@ -97,13 +101,14 @@ export function MenuCard({ item, index }: MenuCardProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowCustomize(false)}
+              onClick={handleClose}
               className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
             />
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
               className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-3xl bg-card p-6 shadow-xl"
             >
               <div className="mb-4 flex items-center justify-between">

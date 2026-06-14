@@ -1,0 +1,24 @@
+version: '3.8'
+
+volumes:
+  qwenpaw-data:
+    name: qwenpaw-coffee-data
+  qwenpaw-secrets:
+    name: qwenpaw-coffee-secrets
+  qwenpaw-backups:
+    name: qwenpaw-coffee-backups
+
+services:
+  qwenpaw:
+    image: agentscope/qwenpaw:latest
+    container_name: qwenpaw-coffee
+    restart: always
+    ports:
+      - "127.0.0.1:8088:8088"
+    environment:
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    volumes:
+      - qwenpaw-data:/app/working
+      - qwenpaw-secrets:/app/working.secret
+      - qwenpaw-backups:/app/working.backups

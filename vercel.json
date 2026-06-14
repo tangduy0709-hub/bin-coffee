@@ -1,0 +1,9 @@
+{
+  "experimentalServices": {
+    "frontend": {
+      "src": "./",
+      "use": "@vercel/next",
+      "routePrefix": "/"
+    }
+  }
+}

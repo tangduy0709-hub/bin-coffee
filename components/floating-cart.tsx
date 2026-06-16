@@ -18,33 +18,42 @@ export function FloatingCart() {
   const total = getTotal()
 
   const handleSubmit = async () => {
-    const order = placeOrder()
-    if (!order) return
+    // 1. Lưu lại hàm setRealOrder vào destructuring
+    const { placeOrder, setRealOrder } = useCartStore.getState();
+    const order = placeOrder();
+    if (!order) return;
 
     if (!order.tableNumber) {
-      console.warn('Bàn chưa được xác định. Vui lòng chọn bàn.')
-      setIsOpen(true)
-      return
+      console.warn('Bàn chưa được xác định.');
+      setIsOpen(true);
+      return;
     }
 
-    setIsSubmitting(true)
+    setIsSubmitting(true);
     try {
-      await submitOrderToBackend({
-        tableNumber: order.tableNumber,
-        items: order.items.map((item) => ({
-          id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-        })),
-      })
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/api/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableNumber: order.tableNumber,
+          items: order.items,
+          note: ''
+        }),
+      });
+
+      if (response.ok) {
+        const realOrder = await response.json();
+        // 2. Cập nhật mã đơn thật từ Database vào Store
+        // realOrder chứa 'order_number' hoặc 'id' thật từ DB
+        setRealOrder(realOrder); 
+      }
     } catch (error) {
-      console.warn('Backend order submission failed', error)
+      console.warn('Backend order submission failed', error);
     } finally {
-      setIsSubmitting(false)
-      setIsOpen(false)
+      setIsSubmitting(false);
+      setIsOpen(false);
     }
-  }
+  };
 
   if (itemCount === 0 && !isOpen) return null
 
@@ -141,15 +150,17 @@ export function FloatingCart() {
                           </p>
                           
                           {/* Customizations Display */}
-                          {(item.customizations?.ice || item.customizations?.sugar) && (
-                            <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                              {item.customizations?.ice && (
-                                <p>Đá: {item.customizations.ice === 'none' ? 'Không' : item.customizations.ice === 'light' ? 'Ít' : item.customizations.ice === 'normal' ? 'Vừa' : 'Nhiều'}</p>
-                              )}
-                              {item.customizations?.sugar && (
-                                <p>Đường: {item.customizations.sugar === 'none' ? 'Không' : item.customizations.sugar === 'light' ? 'Ít' : item.customizations.sugar === 'normal' ? 'Vừa' : 'Nhiều'}</p>
-                              )}
-                            </div>
+                          {item.customizations &&
+                            (item.customizations.ice !== 'normal' ||
+                              item.customizations.sugar !== 'normal') && (
+                              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                {item.customizations.ice !== 'normal' && (
+                                  <p>Đá: {item.customizations.ice === 'none' ? 'Không' : item.customizations.ice === 'light' ? 'Ít' : item.customizations.ice === 'extra' ? 'Nhiều' : 'Vừa'}</p>
+                                )}
+                                {item.customizations.sugar !== 'normal' && (
+                                  <p>Đường: {item.customizations.sugar === 'none' ? 'Không' : item.customizations.sugar === 'light' ? 'Ít' : item.customizations.sugar === 'extra' ? 'Nhiều' : 'Vừa'}</p>
+                                )}
+                              </div>
                           )}
                         </div>
 

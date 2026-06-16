@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { useCartStore, type Order } from '@/lib/store'
 import { formatVND } from '@/lib/utils'
 import { useEffect, useState } from 'react'
+import { io } from 'socket.io-client'
 
 const statusSteps = [
   { status: 'pending', label: 'Đã đặt', icon: CheckCircle2 },
@@ -20,38 +21,56 @@ const statusSteps = [
   { status: 'ready', label: 'Sẵn sàng', icon: Coffee },
 ]
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 export function OrderTracker() {
   const { currentOrder, updateOrderStatus } = useCartStore()
   const [showNotification, setShowNotification] = useState(false)
   const [isExpanded, setIsExpanded] = useState(true)
 
-  // Simulate order progress
+  // Listen for real-time order status updates from backend
   useEffect(() => {
     if (!currentOrder) return
 
-    const timers: NodeJS.Timeout[] = []
+    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+    const socket = io(socketUrl, { transports: ['websocket'] })
 
-    if (currentOrder.status === 'pending') {
-      timers.push(
-        setTimeout(() => {
-          updateOrderStatus('preparing')
-        }, 5000)
-      )
-    }
+    socket.on('connect', () => {
+      console.log('✅ TRẠNG THÁI: Đã kết nối Socket thành công!')
+      console.log('🛒 Đơn hàng đang theo dõi:', currentOrder)
+    })
 
-    if (currentOrder.status === 'preparing') {
-      timers.push(
-        setTimeout(() => {
-          updateOrderStatus('ready')
+    socket.on('order:updated', (updatedOrder: any) => {
+      console.log('🔔 CÓ TÍN HIỆU TỪ BACKEND:', updatedOrder)
+      
+      const currentOrderId = String(currentOrder.id)
+      const updatedOrderId = String(updatedOrder?.id)
+      const updatedOrderNum = updatedOrder?.order_number
+      const currentOrderNum = (currentOrder as any).order_number
+
+      console.log('🔎 ĐANG SO SÁNH:', { currentOrderId, updatedOrderId, updatedOrderNum })
+
+      const isMatchingOrder =
+        updatedOrderId === currentOrderId ||
+        updatedOrderNum === currentOrderId ||
+        updatedOrderNum === currentOrderNum
+
+      if (isMatchingOrder) {
+        console.log('🎉 ĐÚNG ĐƠN RỒI! Đổi trạng thái sang:', updatedOrder.status)
+        updateOrderStatus(updatedOrder.status)
+
+        if (updatedOrder.status === 'ready') {
           setShowNotification(true)
-        }, 10000)
-      )
-    }
+        }
+      } else {
+        console.log('❌ TÍN HIỆU CỦA ĐƠN KHÁC, BỎ QUA.')
+      }
+    })
 
     return () => {
-      timers.forEach(clearTimeout)
+      socket.disconnect()
     }
-  }, [currentOrder?.status, updateOrderStatus, currentOrder])
+  }, [currentOrder, updateOrderStatus])
 
   if (!currentOrder) return null
 
@@ -76,10 +95,10 @@ export function OrderTracker() {
               </div>
               <div className="flex-1">
                 <h4 className="font-semibold text-accent-foreground">
-                  {"Your order is ready!"}
+                  Đơn của bạn đã sẵn sàng!
                 </h4>
                 <p className="text-sm text-accent-foreground/80">
-                  Please collect from the counter
+                  Vui lòng đến quầy lấy món
                 </p>
               </div>
               <Button
@@ -120,7 +139,7 @@ export function OrderTracker() {
               <p className="text-sm text-muted-foreground">
                 {currentOrder.status === 'ready'
                   ? 'Đã sẵn sàng!'
-                  : `Dự kiến ${currentOrder.estimatedTime} phút`}
+                  : `Đang xử lý`}
               </p>
             </div>
           </div>
@@ -157,11 +176,11 @@ export function OrderTracker() {
                         >
                           <Icon className="h-5 w-5" />
                           {isCurrent && (
-                            <motion.div
-                              animate={{ scale: [1, 1.2, 1] }}
-                              transition={{ repeat: Infinity, duration: 2 }}
-                              className="absolute inset-0 rounded-full border-2 border-primary"
-                            />
+                                <motion.div
+                                  animate={{ scale: [1, 1.2, 1] }}
+                                  transition={{ repeat: Infinity, duration: 2 }}
+                                  className="absolute inset-0 rounded-full border-2 border-primary"
+                                />
                           )}
                         </div>
                         <span

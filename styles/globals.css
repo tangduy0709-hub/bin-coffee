@@ -123,3 +123,9 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* When a modal/dialog is open, prevent sticky header/tabs from intercepting pointer events */
+.dialog-open .glass,
+.dialog-open .sticky {
+  pointer-events: none;
+}

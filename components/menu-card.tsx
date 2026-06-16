@@ -8,7 +8,7 @@ import type { MenuItem } from '@/lib/store'
 import { useCartStore } from '@/lib/store'
 import { formatVND } from '@/lib/utils'
 import Image from 'next/image'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 interface MenuCardProps {
   item: MenuItem
@@ -21,15 +21,43 @@ export function MenuCard({ item, index }: MenuCardProps) {
   const [ice, setIce] = useState<'none' | 'light' | 'normal' | 'extra'>('normal')
   const [sugar, setSugar] = useState<'none' | 'light' | 'normal' | 'extra'>('normal')
 
+  useEffect(() => {
+    if (showCustomize) {
+      document.documentElement.style.scrollBehavior = 'auto'
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth
+      document.body.style.overflow = 'hidden'
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`
+      }
+      document.body.classList.add('dialog-open')
+    } else {
+      document.body.style.overflow = ''
+      document.body.style.paddingRight = ''
+      document.documentElement.style.scrollBehavior = ''
+      document.body.classList.remove('dialog-open')
+    }
+    return () => {
+      document.body.style.overflow = ''
+      document.body.style.paddingRight = ''
+      document.documentElement.style.scrollBehavior = ''
+      document.body.classList.remove('dialog-open')
+    }
+  }, [showCustomize])
+
   const handleClose = () => {
     setShowCustomize(false)
+    setIce('normal')
+    setSugar('normal')
   }
 
   const handleAddItem = () => {
-    addItem(item, { ice, sugar })
+    const customizations =
+      ice === 'normal' && sugar === 'normal'
+        ? undefined
+        : { ice, sugar }
+
+    addItem(item, customizations)
     handleClose()
-    setIce('normal')
-    setSugar('normal')
   }
 
   return (
@@ -86,7 +114,11 @@ export function MenuCard({ item, index }: MenuCardProps) {
       </div>
 
       <Button
-        onClick={() => setShowCustomize(true)}
+        onClick={() => {
+          setIce('normal')
+          setSugar('normal')
+          setShowCustomize(true)
+        }}
         size="icon"
         className="absolute bottom-3 right-3 h-9 w-9 rounded-full bg-primary shadow-lg transition-transform hover:scale-105"
       >
@@ -101,22 +133,27 @@ export function MenuCard({ item, index }: MenuCardProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              layout={false}
               onClick={handleClose}
-              className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+              className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm pointer-events-auto"
             />
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
+              layout={false}
               onClick={(event) => event.stopPropagation()}
-              className="fixed left-1/2 top-1/2 z-50 w-80 -translate-x-1/2 -translate-y-1/2 rounded-3xl bg-card p-6 shadow-xl"
+              className="fixed left-1/2 top-1/2 z-[60] w-80 max-h-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-3xl bg-card p-6 shadow-xl pointer-events-auto overflow-y-auto"
+              style={{ willChange: 'transform' }}
+              role="dialog"
+              aria-modal="true"
             >
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="font-semibold text-foreground">{item.name}</h3>
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setShowCustomize(false)}
+                  onClick={handleClose}
                   className="h-8 w-8"
                 >
                   <X className="h-4 w-4" />
@@ -131,6 +168,7 @@ export function MenuCard({ item, index }: MenuCardProps) {
                     {(['none', 'light', 'normal', 'extra'] as const).map((option) => (
                       <button
                         key={option}
+                        type="button"
                         onClick={() => setIce(option)}
                         className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                           ice === option
@@ -157,6 +195,7 @@ export function MenuCard({ item, index }: MenuCardProps) {
                     {(['none', 'light', 'normal', 'extra'] as const).map((option) => (
                       <button
                         key={option}
+                        type="button"
                         onClick={() => setSugar(option)}
                         className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
                           sugar === option

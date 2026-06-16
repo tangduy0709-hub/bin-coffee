@@ -103,14 +103,11 @@ async function connectDatabase() {
       if (menuRows[0].count === 0) {
         await pool.query(`INSERT INTO menu (name, description, price, image, category, tags, recommended) VALUES ?`, [
           [
-            ['Espresso Đặc Biệt', 'Espresso đôi đậm đà với hương vị socola đen', 25000, '/images/espresso.jpg', 'coffee', JSON.stringify(['Mạnh', 'Cổ điển']), true],
-            ['Latte Caramel', 'Latte kem mịn với caramel tự chế và vani', 32000, '/images/caramel-latte.jpg', 'coffee', JSON.stringify(['Ngọt', 'Phổ biến']), true],
-            ['Cappuccino Sữa Yến Mạch', 'Cappuccino mịn với bọt sữa yến mạch hữu cơ', 30000, '/images/cappuccino.jpg', 'coffee', JSON.stringify(['Thực vật', 'Kem mịn']), false],
-            ['Cà Phê Lạnh', 'Cà phê ngâm 24 giờ, mượt mà và tươi mát', 28000, '/images/cold-brew.jpg', 'coffee', JSON.stringify(['Tươi mát', 'Mượt mà']), false],
-            ['Latte Matcha', 'Matcha cấp độ lễ hội với sữa tùy chọn', 32000, '/images/matcha.jpg', 'tea', JSON.stringify(['Mộc mạc', 'Tỉnh táo']), true],
-            ['Latte Chai', 'Hỗn hợp chai gia vị với quế ấm áp và thảo quả', 30000, '/images/chai.jpg', 'tea', JSON.stringify(['Gia vị', 'Ấm áp']), false],
-            ['Croissant Hạnh Nhân', 'Croissant bơ lùn nhân kem hạnh nhân', 25000, '/images/croissant.jpg', 'pastry', JSON.stringify(['Tươi', 'Bán chạy']), true],
-            ['Bánh Cuộn Quế', 'Bánh cuộn quế ấm áp với kem phô mai', 26000, '/images/roll.jpg', 'pastry', JSON.stringify(['Ngọt', 'Thoải mái']), false],
+            ['Cà Phê Đá', 'Cà phê pha phin, phục vụ kèm đá', 28000, '/images/ca-phe-da.jpg', 'coffee', JSON.stringify(['Tươi']), false],
+            ['Cà Phê Sữa', 'Cà phê pha với sữa đặc, thơm và ngọt dịu', 30000, '/images/ca-phe-sua.jpg', 'coffee', JSON.stringify(['Ngọt']), false],
+            ['Bạc Xỉu', 'Cà phê nhẹ nhàng pha nhiều sữa, vị mềm mịn', 32000, '/images/bac-xiu.jpg', 'coffee', JSON.stringify(['Mềm']), false],
+            ['Trà Đào', 'Trà đào đá tươi, thơm mùi đào', 28000, '/images/tra-dao.jpg', 'tea', JSON.stringify(['Trái cây']), false],
+            ['Nước Cam', 'Nước cam vắt tươi, không đường', 35000, '/images/nuoc-cam.jpg', 'specialty', JSON.stringify(['Tươi']), false],
           ],
         ])
       }
@@ -261,6 +258,29 @@ app.post('/api/order', async (req, res) => {
   }
 })
 
+app.get('/api/table-entry', async (req, res) => {
+  try {
+    const token = String(req.query.token || '')
+    if (!token) {
+      return res.status(400).json({ error: 'Token bàn không được để trống' })
+    }
+
+    const [rows] = await pool.query(
+      'SELECT table_number FROM tables WHERE token = ? OR table_number = ? LIMIT 1',
+      [token, token]
+    )
+
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Không tìm thấy thông tin bàn tương ứng' })
+    }
+
+    return res.json({ tableNumber: rows[0].table_number })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: 'Lỗi khi tra cứu cổng vào bàn' })
+  }
+})
+
 app.post('/api/voice-order', async (req, res) => {
   try {
     const { tableNumber, itemName, quantity, note } = req.body
@@ -320,6 +340,38 @@ app.post('/api/order/:orderId/complete', async (req, res) => {
   } catch (error) {
     console.error(error)
     res.status(500).json({ error: 'Không thể cập nhật đơn hàng' })
+  }
+})
+
+// Update arbitrary status (preparing, ready, completed)
+app.post('/api/order/:orderId/status', async (req, res) => {
+  try {
+    const { orderId } = req.params
+    const { status } = req.body
+    if (!['pending', 'preparing', 'ready', 'completed'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' })
+    }
+
+    await pool.query('UPDATE orders SET status = ? WHERE id = ?', [status, orderId])
+    const [rows] = await pool.query('SELECT table_number FROM orders WHERE id = ?', [orderId])
+    const tableNumber = rows.length ? rows[0].table_number : null
+
+    const updatedOrders = await fetchOrders()
+    const updatedOrder = updatedOrders.find((o) => o.id === Number(orderId))
+    io.emit('order:updated', updatedOrder || null)
+
+    if (tableNumber) {
+      await publishTableNotification(tableNumber, {
+        event: 'order_status_updated',
+        orderId: Number(orderId),
+        status,
+      })
+    }
+
+    res.json({ success: true })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ error: 'Không thể cập nhật trạng thái đơn' })
   }
 })
 

@@ -4,7 +4,7 @@ import path from 'path'
 
 // Config
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000'
-const NUM_TABLES = 15 // Số bàn trong quán
+const NUM_TABLES = 3 // Số bàn trong quán (chỉ tạo cho bàn 1-3)
 
 async function generateQRCodes() {
   const qrDir = path.join(process.cwd(), 'public', 'qr-codes')
@@ -17,7 +17,7 @@ async function generateQRCodes() {
 
   // Generate QR code cho mỗi bàn
   for (let tableNum = 1; tableNum <= NUM_TABLES; tableNum++) {
-    const url = `${BASE_URL}?table=${tableNum}`
+    const url = `${BASE_URL}/table/${tableNum}`
     const filename = path.join(qrDir, `table-${tableNum}.png`)
 
     try {

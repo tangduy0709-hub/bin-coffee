@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { io } from 'socket.io-client'
 import { CheckCircle2, Coffee, ClipboardList, Flame, PackageCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { BACKEND_URL, markOrderComplete } from '@/lib/backend'
+import { BACKEND_URL, markOrderComplete, updateOrderStatus } from '@/lib/backend'
 import { formatVND } from '@/lib/utils'
 
 interface KitchenOrderItem {
@@ -128,6 +128,28 @@ export default function DashboardPage() {
                   <p className="text-sm text-muted-foreground">Tạo lúc</p>
                   <p className="mt-1 text-sm text-foreground">{new Date(order.created_at).toLocaleString('vi-VN')}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
+                    {order.status === 'pending' && (
+                      <Button
+                        size="sm"
+                        onClick={() => updateOrderStatus(order.id, 'preparing').then(() => {
+                          setOrders((prev) => prev.map((item) => item.id === order.id ? { ...item, status: 'preparing' } : item))
+                        })}
+                      >
+                        Nhận đơn (Preparing)
+                      </Button>
+                    )}
+
+                    {order.status === 'preparing' && (
+                      <Button
+                        size="sm"
+                        onClick={() => updateOrderStatus(order.id, 'ready').then(() => {
+                          setOrders((prev) => prev.map((item) => item.id === order.id ? { ...item, status: 'ready' } : item))
+                        })}
+                      >
+                        Đánh dấu sẵn sàng (Ready)
+                      </Button>
+                    )}
+
                     <Button
                       size="sm"
                       onClick={() => markOrderComplete(order.id).then(() => {

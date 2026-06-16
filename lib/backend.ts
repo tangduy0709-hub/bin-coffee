@@ -26,3 +26,11 @@ export async function markOrderComplete(orderId: number) {
     method: 'POST',
   })
 }
+
+export async function updateOrderStatus(orderId: number, status: string) {
+  return fetch(`${BACKEND_URL}/api/order/${orderId}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+}

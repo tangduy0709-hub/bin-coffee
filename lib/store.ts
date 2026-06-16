@@ -25,6 +25,7 @@ export interface CartItem extends MenuItem {
 
 export interface Order {
   id: string
+  order_number?: string // Thêm trường này để đồng bộ với Backend
   items: CartItem[]
   total: number
   status: 'pending' | 'preparing' | 'ready' | 'completed'
@@ -47,6 +48,7 @@ interface CartStore {
   setTableNumber: (tableNumber: string) => void
   placeOrder: () => Order | null
   updateOrderStatus: (status: Order['status']) => void
+  setRealOrder: (order: any) => void // Hàm mới để lưu đơn thật
 }
 
 export const useCartStore = create<CartStore>((set, get) => ({
@@ -56,9 +58,16 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
   addItem: (item, customizations) => {
     set((state) => {
-      const customizationsStr = JSON.stringify(customizations || {})
+      const normalizedCustomizations =
+        customizations &&
+        customizations.ice === 'normal' &&
+        customizations.sugar === 'normal'
+          ? undefined
+          : customizations
+
+      const customizationsStr = JSON.stringify(normalizedCustomizations || {})
       const cartItemId = `${item.id}-${Math.random().toString(36).substr(2, 9)}`
-      
+
       const existingItem = state.items.find(
         (i) =>
           i.id === item.id &&
@@ -76,7 +85,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
       return {
         items: [
           ...state.items,
-          { ...item, cartItemId, quantity: 1, customizations },
+          { ...item, cartItemId, quantity: 1, customizations: normalizedCustomizations },
         ],
       }
     })
@@ -136,108 +145,65 @@ export const useCartStore = create<CartStore>((set, get) => ({
     return order
   },
 
-  updateOrderStatus: (status) => {
+  updateOrderStatus: (status) =>
     set((state) => ({
       currentOrder: state.currentOrder
-        ? { ...state.currentOrder, status }
+        ? { ...state.currentOrder, status: status }
         : null,
-    }))
-  },
+    })),
+
+  // THÊM HÀM MỚI Ở ĐÂY
+  setRealOrder: (order) =>
+    set({ currentOrder: order }),
 }))
 
 export const menuItems: MenuItem[] = [
   {
-    id: '1',
-    name: 'Espresso Đặc Biệt',
-    description: 'Espresso đôi đậm đà với hương vị socola đen',
-    price: 25000,
-    category: 'coffee',
-    image: '/images/espresso.jpg',
-    tags: ['Mạnh', 'Cổ điển'],
-    recommended: true,
-  },
-  {
-    id: '2',
-    name: 'Latte Caramel',
-    description: 'Latte kem mịn với caramel tự chế và vani',
+    id: '3',
+    name: 'Bạc Xỉu',
+    description: 'Cà phê nhẹ nhàng pha nhiều sữa, vị mềm mịn',
     price: 32000,
     category: 'coffee',
-    image: '/images/caramel-latte.jpg',
-    tags: ['Ngọt', 'Phổ biến'],
+    image: '/images/bac-xiu.jpg',
+    tags: ['Mềm'],
     recommended: true,
-  },
-  {
-    id: '3',
-    name: 'Cappuccino Sữa Yến Mạch',
-    description: 'Cappuccino mịn với bọt sữa yến mạch hữu cơ',
-    price: 30000,
-    category: 'coffee',
-    image: '/images/cappuccino.jpg',
-    tags: ['Thực vật', 'Kem mịn'],
   },
   {
     id: '4',
-    name: 'Cà Phê Lạnh',
-    description: 'Cà phê ngâm 24 giờ, mượt mà và tươi mát',
+    name: 'Trà Đào',
+    description: 'Trà đào đá tươi, thơm mùi đào',
     price: 28000,
-    category: 'coffee',
-    image: '/images/cold-brew.jpg',
-    tags: ['Tươi mát', 'Mượt mà'],
+    category: 'tea',
+    image: '/images/tra-dao.jpg',
+    tags: ['Trái cây'],
   },
   {
     id: '5',
-    name: 'Latte Matcha',
-    description: 'Matcha cấp độ lễ hội với sữa tùy chọn',
-    price: 32000,
-    category: 'tea',
-    image: '/images/matcha.jpg',
-    tags: ['Mộc mạc', 'Tỉnh táo'],
-    recommended: true,
-  },
-  {
-    id: '6',
-    name: 'Latte Chai',
-    description: 'Hỗn hợp chai gia vị với quế ấm áp và thảo quả',
-    price: 30000,
-    category: 'tea',
-    image: '/images/chai.jpg',
-    tags: ['Gia vị', 'Ấm áp'],
-  },
-  {
-    id: '7',
-    name: 'Croissant Hạnh Nhân',
-    description: 'Croissant bơ lùn nhân kem hạnh nhân',
-    price: 25000,
-    category: 'pastry',
-    image: '/images/croissant.jpg',
-    tags: ['Tươi', 'Bán chạy'],
-    recommended: true,
-  },
-  {
-    id: '8',
-    name: 'Bánh Cuộn Quế',
-    description: 'Bánh cuộn quế ấm áp với kem phô mai',
-    price: 26000,
-    category: 'pastry',
-    image: '/images/cinnamon-roll.jpg',
-    tags: ['Ngọt', 'Thoải mái'],
-  },
-  {
-    id: '9',
-    name: 'Mocha Cacao',
-    description: 'Espresso với cacao đậm và sữa hơi nóng',
-    price: 32000,
-    category: 'specialty',
-    image: '/images/mocha.jpg',
-    tags: ['Socola', 'Xa xỉ'],
-  },
-  {
-    id: '10',
-    name: 'Affogato',
-    description: 'Espresso rót trên kem vani Ý',
+    name: 'Nước Cam',
+    description: 'Nước cam vắt tươi, không đường',
     price: 35000,
     category: 'specialty',
-    image: '/images/affogato.jpg',
-    tags: ['Tráng miệng', 'Đặc biệt'],
+    image: '/images/nuoc-cam.jpg',
+    tags: ['Tươi'],
+  },
+  {
+    id: '1',
+    name: 'Cà Phê Đá',
+    description: 'Cà phê pha phin, phục vụ kèm đá',
+    price: 28000,
+    category: 'coffee',
+    image: '/images/ca-phe-da.jpg',
+    tags: ['Tươi'],
+    recommended: false,
+  },
+  {
+    id: '2',
+    name: 'Cà Phê Sữa',
+    description: 'Cà phê pha với sữa đặc, thơm và ngọt dịu',
+    price: 30000,
+    category: 'coffee',
+    image: '/images/ca-phe-sua.jpg',
+    tags: ['Ngọt'],
+    recommended: false,
   },
 ]

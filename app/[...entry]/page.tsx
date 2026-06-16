@@ -1,5 +1,5 @@
 import CoffeeShopPage from '@/components/coffee-shop-page'
 
-export default function Page() {
+export default function EntryPage() {
   return <CoffeeShopPage />
 }

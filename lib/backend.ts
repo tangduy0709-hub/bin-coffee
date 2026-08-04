@@ -34,3 +34,11 @@ export async function updateOrderStatus(orderId: number, status: string) {
     body: JSON.stringify({ status }),
   })
 }
+// Thêm hàm này vào cuối file lib/backend.ts
+export async function updatePaymentStatus(orderId: number, paymentStatus: string) {
+  return fetch(`${BACKEND_URL}/api/order/${orderId}/payment`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ payment_status: paymentStatus }),
+  })
+}

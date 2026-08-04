@@ -50,6 +50,28 @@ export function MenuCard({ item, index }: MenuCardProps) {
     setSugar('normal')
   }
 
+  const isMilkBasedDrink = ['Cà Phê Sữa', 'Bạc Xỉu'].includes(item.name)
+
+  const getIceLabel = (option: 'none' | 'light' | 'normal' | 'extra') => {
+    return option === 'none'
+      ? 'Không đá'
+      : option === 'light'
+        ? 'Ít đá'
+        : option === 'normal'
+          ? 'Vừa đá'
+          : 'Nhiều đá'
+  }
+
+  const getSugarLabel = (option: 'none' | 'light' | 'normal' | 'extra') => {
+    return option === 'none'
+      ? 'Không đường'
+      : option === 'light'
+        ? 'Ít đường'
+        : option === 'normal'
+          ? 'Vừa đường'
+          : 'Nhiều đường'
+  }
+
   const handleAddItem = () => {
     const customizations =
       ice === 'normal' && sugar === 'normal'
@@ -61,128 +83,113 @@ export function MenuCard({ item, index }: MenuCardProps) {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.05 }}
-      whileTap={{ scale: 0.98 }}
-      className="group relative overflow-hidden rounded-2xl bg-card p-3 shadow-sm transition-all hover:shadow-md"
-    >
-      <div className="relative mb-3 aspect-square overflow-hidden rounded-xl">
-        <Image
-          src={item.image}
-          alt={item.name}
-          fill
-          className="object-cover transition-transform duration-300 group-hover:scale-105"
-        />
-        {item.recommended && (
-          <div className="absolute left-2 top-2">
-            <Badge className="gap-1 bg-accent text-accent-foreground">
-              <Star className="h-3 w-3" fill="currentColor" />
-              Recommended
-            </Badge>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-1">
-        <div className="flex items-start justify-between gap-2">
-          <h3 className="font-medium text-card-foreground leading-tight">
-            {item.name}
-          </h3>
-          <span className="shrink-0 font-semibold text-primary">
-            {formatVND(item.price)}
-          </span>
+    <>
+      {/* KHỐI 1: THẺ HIỂN THỊ MÓN ĂN */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.05 }}
+        whileTap={{ scale: 0.98 }}
+        className="group relative overflow-hidden rounded-2xl bg-card p-3 shadow-sm transition-all hover:shadow-md"
+      >
+        <div className="relative mb-3 aspect-square overflow-hidden rounded-xl">
+          <Image
+            src={item.image}
+            alt={item.name}
+            fill
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+          {item.recommended && (
+            <div className="absolute left-2 top-2">
+              <Badge className="gap-1 bg-accent text-accent-foreground">
+                <Star className="h-3 w-3" fill="currentColor" />
+                Gợi ý
+              </Badge>
+            </div>
+          )}
         </div>
 
-        <p className="line-clamp-2 text-xs text-muted-foreground">
-          {item.description}
-        </p>
-
-        {item.tags && (
-          <div className="flex flex-wrap gap-1 pt-1">
-            {item.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-              >
-                {tag}
-              </span>
-            ))}
+        <div className="space-y-1">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-medium text-card-foreground leading-tight">
+              {item.name}
+            </h3>
+            <span className="shrink-0 font-semibold text-primary">
+              {formatVND(item.price)}
+            </span>
           </div>
-        )}
-      </div>
 
-      <Button
-        onClick={() => {
-          setIce('normal')
-          setSugar('normal')
-          setShowCustomize(true)
-        }}
-        size="icon"
-        className="absolute bottom-3 right-3 h-9 w-9 rounded-full bg-primary shadow-lg transition-transform hover:scale-105"
-      >
-        <Plus className="h-4 w-4" />
-      </Button>
+          <p className="line-clamp-2 text-xs text-muted-foreground">
+            {item.description}
+          </p>
 
-      {/* Customization Dialog */}
-      <AnimatePresence>
+          {item.tags && (
+            <div className="flex flex-wrap gap-1 pt-1">
+              {item.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Button
+          onClick={() => {
+            setIce('normal')
+            setSugar('normal')
+            setShowCustomize(true)
+          }}
+          size="icon"
+          className="absolute bottom-3 right-3 h-9 w-9 rounded-full bg-primary shadow-lg transition-transform hover:scale-105"
+        >
+          <Plus className="h-4 w-4" />
+        </Button>
+      </motion.div>
+
+      {/* KHỐI 2: POPUP CHỌN TÙY CHỈNH (Được đưa ra ngoài hoàn toàn khỏi thẻ motion của món ăn) */}
+      <AnimatePresence mode="wait">
         {showCustomize && (
-          <>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              layout={false}
               onClick={handleClose}
-              className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm pointer-events-auto"
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
             />
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              layout={false}
-              onClick={(event) => event.stopPropagation()}
-              className="fixed left-1/2 top-1/2 z-[60] w-80 max-h-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-3xl bg-card p-6 shadow-xl pointer-events-auto overflow-y-auto"
-              style={{ willChange: 'transform' }}
-              role="dialog"
-              aria-modal="true"
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative z-[101] w-full max-w-sm rounded-3xl bg-card p-6 shadow-2xl overflow-y-auto max-h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
             >
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="font-semibold text-foreground">{item.name}</h3>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleClose}
-                  className="h-8 w-8"
-                >
+                <h3 className="font-semibold text-foreground text-lg">{item.name}</h3>
+                <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8 rounded-full">
                   <X className="h-4 w-4" />
                 </Button>
               </div>
 
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {/* Ice Selection */}
                 <div>
-                  <label className="text-sm font-medium text-foreground">Đá</label>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
+                  <label className="text-sm font-bold text-foreground mb-3 block">Lượng đá</label>
+                  <div className="grid grid-cols-2 gap-2">
                     {(['none', 'light', 'normal', 'extra'] as const).map((option) => (
                       <button
                         key={option}
                         type="button"
                         onClick={() => setIce(option)}
-                        className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                          ice === option
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                        className={`rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                          ice === option ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted hover:bg-muted/80'
                         }`}
                       >
-                        {option === 'none'
-                          ? 'Không'
-                          : option === 'light'
-                            ? 'Ít'
-                            : option === 'normal'
-                              ? 'Vừa'
-                              : 'Nhiều'}
+                        {getIceLabel(option)}
                       </button>
                     ))}
                   </div>
@@ -190,44 +197,34 @@ export function MenuCard({ item, index }: MenuCardProps) {
 
                 {/* Sugar Selection */}
                 <div>
-                  <label className="text-sm font-medium text-foreground">Đường</label>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
+                  <label className="text-sm font-bold text-foreground mb-3 block">
+                    {isMilkBasedDrink ? 'Lượng sữa' : 'Lượng đường'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
                     {(['none', 'light', 'normal', 'extra'] as const).map((option) => (
                       <button
                         key={option}
                         type="button"
                         onClick={() => setSugar(option)}
-                        className={`rounded-lg px-3 py-2 text-sm font-medium transition-all ${
-                          sugar === option
-                            ? 'bg-primary text-primary-foreground'
-                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                        className={`rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                          sugar === option ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted hover:bg-muted/80'
                         }`}
                       >
-                        {option === 'none'
-                          ? 'Không'
-                          : option === 'light'
-                            ? 'Ít'
-                            : option === 'normal'
-                              ? 'Vừa'
-                              : 'Nhiều'}
+                        {getSugarLabel(option)}
                       </button>
                     ))}
                   </div>
                 </div>
 
-                {/* Add Button */}
-                <Button
-                  onClick={handleAddItem}
-                  className="w-full gap-2 rounded-xl"
-                >
-                  <Plus className="h-4 w-4" />
+                <Button onClick={handleAddItem} className="w-full h-12 rounded-2xl text-base font-bold shadow-lg">
+                  <Plus className="h-5 w-5 mr-2" />
                   Thêm vào giỏ - {formatVND(item.price)}
                 </Button>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </>
   )
 }

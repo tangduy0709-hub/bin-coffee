@@ -27,7 +27,7 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Bin coffee | Artisan Coffee',
+  title: 'Bin coffee',
   description: 'Order your favorite artisan coffee with our modern QR ordering system. Fresh brews, premium pastries, and cozy vibes.',
   generator: 'v0.app',
   icons: {
@@ -55,7 +55,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`${geist.variable} ${geistMono.variable} ${playfair.variable}`}>
+    // Đã thay đổi lang="en" thành lang="vi" và thêm translate="no" ở dòng dưới đây:
+    <html lang="vi" translate="no" className={`${geist.variable} ${geistMono.variable} ${playfair.variable}`}>
       <body className="bg-background font-sans antialiased">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}

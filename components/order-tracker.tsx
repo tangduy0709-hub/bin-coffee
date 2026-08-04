@@ -8,11 +8,12 @@ import {
   Bell,
   X,
   ChefHat,
+  Volume2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore, type Order } from '@/lib/store'
 import { formatVND } from '@/lib/utils'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { io } from 'socket.io-client'
 
 const statusSteps = [
@@ -21,34 +22,77 @@ const statusSteps = [
   { status: 'ready', label: 'Sẵn sàng', icon: Coffee },
 ]
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
-
 export function OrderTracker() {
-  const { currentOrder, updateOrderStatus } = useCartStore()
+  const { currentOrder, updateOrderStatus, setOrder } = useCartStore()
   const [showNotification, setShowNotification] = useState(false)
+  const [notificationMsg, setNotificationMsg] = useState({ title: '', desc: '' })
   const [isExpanded, setIsExpanded] = useState(true)
+  
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Listen for real-time order status updates from backend
   useEffect(() => {
-    if (!currentOrder) return
+    audioRef.current = new Audio('https://www.soundjay.com/buttons/sounds/button-09.mp3')
+    audioRef.current.volume = 0.5
+  }, [])
 
+  const playNotificationSound = () => {
+    if (audioRef.current) {
+      audioRef.current.play().catch(e => console.log("Lỗi phát âm thanh:", e))
+    }
+  }
+
+  useEffect(() => {
     const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
     const socket = io(socketUrl, { transports: ['websocket'] })
 
     socket.on('connect', () => {
       console.log('✅ TRẠNG THÁI: Đã kết nối Socket thành công!')
-      console.log('🛒 Đơn hàng đang theo dõi:', currentOrder)
     })
 
-    socket.on('order:updated', (updatedOrder: any) => {
-      console.log('🔔 CÓ TÍN HIỆU TỪ BACKEND:', updatedOrder)
+    // 1. SỰ KIỆN: TẠO ĐƠN MỚI
+    socket.on('order:new', (newOrder: any) => {
+      // --- BỘ LỌC THÉP CHẶN NHẬN NHẦM ĐƠN ---
+      const urlParams = new URLSearchParams(window.location.search)
+      const tableFromUrl = urlParams.get('table') || urlParams.get('table_number')
+      const tableFromStorage = localStorage.getItem('tableNumber') || localStorage.getItem('table_number') || localStorage.getItem('table')
       
+      const currentRawTable = String(tableFromUrl || tableFromStorage || '')
+      const currentTableNum = currentRawTable.replace(/\D/g, '') // Lấy đúng con số của máy này
+      
+      const incomingTableNum = String(newOrder.table_number || '').replace(/\D/g, '') // Số bàn của đơn vừa được bắn lên mạng
+
+      // 🚨 LUẬT THÉP: Nếu máy này không tìm thấy số bàn, HOẶC số bàn khác nhau -> HỦY NGAY LẬP TỨC!
+      if (!currentTableNum || incomingTableNum !== currentTableNum) {
+        console.log(`🚫 Chặn đơn: Máy này là Bàn [${currentTableNum || 'Rỗng'}], Đơn bắn lên của Bàn [${incomingTableNum}]`)
+        return 
+      }
+
+      // TRÁNH TRÙNG LẶP: Nếu đơn mới trùng khớp ID với đơn đang hiển thị thì không thông báo lại
+      if (currentOrder && String(currentOrder.id) === String(newOrder.id)) {
+          return;
+      }
+      // ----------------------------------------------
+
+      if (setOrder) {
+          setOrder(newOrder)
+          setNotificationMsg({
+            title: 'Đơn hàng đã được xác nhận!',
+            desc: `Đơn ${newOrder.order_number} đang được chuyển xuống bếp.`
+          })
+          setShowNotification(true)
+          playNotificationSound()
+          setIsExpanded(true)
+      }
+    })
+
+    // 2. SỰ KIỆN: TRẠNG THÁI ĐƠN HÀNG THAY ĐỔI
+    socket.on('order:updated', (updatedOrder: any) => {
+      if (!currentOrder) return
+
       const currentOrderId = String(currentOrder.id)
       const updatedOrderId = String(updatedOrder?.id)
       const updatedOrderNum = updatedOrder?.order_number
       const currentOrderNum = (currentOrder as any).order_number
-
-      console.log('🔎 ĐANG SO SÁNH:', { currentOrderId, updatedOrderId, updatedOrderNum })
 
       const isMatchingOrder =
         updatedOrderId === currentOrderId ||
@@ -56,21 +100,24 @@ export function OrderTracker() {
         updatedOrderNum === currentOrderNum
 
       if (isMatchingOrder) {
-        console.log('🎉 ĐÚNG ĐƠN RỒI! Đổi trạng thái sang:', updatedOrder.status)
+        console.log('✅ Đổi trạng thái sang:', updatedOrder.status)
         updateOrderStatus(updatedOrder.status)
 
         if (updatedOrder.status === 'ready') {
+          setNotificationMsg({
+            title: 'Đơn của bạn đã sẵn sàng!',
+            desc: 'Vui lòng đến quầy lấy món nhé.'
+          })
           setShowNotification(true)
+          playNotificationSound()
         }
-      } else {
-        console.log('❌ TÍN HIỆU CỦA ĐƠN KHÁC, BỎ QUA.')
       }
     })
 
     return () => {
       socket.disconnect()
     }
-  }, [currentOrder, updateOrderStatus])
+  }, [currentOrder, updateOrderStatus, setOrder])
 
   if (!currentOrder) return null
 
@@ -80,7 +127,6 @@ export function OrderTracker() {
 
   return (
     <>
-      {/* Notification Popup */}
       <AnimatePresence>
         {showNotification && (
           <motion.div
@@ -95,10 +141,10 @@ export function OrderTracker() {
               </div>
               <div className="flex-1">
                 <h4 className="font-semibold text-accent-foreground">
-                  Đơn của bạn đã sẵn sàng!
+                  {notificationMsg.title}
                 </h4>
                 <p className="text-sm text-accent-foreground/80">
-                  Vui lòng đến quầy lấy món
+                  {notificationMsg.desc}
                 </p>
               </div>
               <Button
@@ -114,7 +160,6 @@ export function OrderTracker() {
         )}
       </AnimatePresence>
 
-      {/* Order Tracker Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -158,7 +203,6 @@ export function OrderTracker() {
               className="overflow-hidden"
             >
               <div className="border-t border-border px-4 py-4">
-                {/* Progress Steps */}
                 <div className="mb-4 flex justify-between">
                   {statusSteps.map((step, index) => {
                     const Icon = step.icon
@@ -197,10 +241,9 @@ export function OrderTracker() {
                   })}
                 </div>
 
-                {/* Order Items Summary */}
                 <div className="rounded-xl bg-muted/50 p-3">
                   <h4 className="mb-2 text-sm font-medium text-card-foreground">
-                    Order Summary
+                    Tóm tắt đơn hàng
                   </h4>
                   {currentOrder.items.map((item) => (
                     <div
@@ -216,7 +259,7 @@ export function OrderTracker() {
                     </div>
                   ))}
                   <div className="mt-2 flex items-center justify-between border-t border-border pt-2 font-medium">
-                    <span className="text-card-foreground">Total</span>
+                    <span className="text-card-foreground">Tổng cộng</span>
                     <span className="text-primary">
                       {formatVND(currentOrder.total)}
                     </span>
@@ -240,10 +283,10 @@ function StatusBadge({ status }: { status: Order['status'] }) {
   }
 
   const labels = {
-    pending: 'Pending',
-    preparing: 'Preparing',
-    ready: 'Ready',
-    completed: 'Done',
+    pending: 'Chờ nhận',
+    preparing: 'Đang pha chế',
+    ready: 'Xong',
+    completed: 'Hoàn thành',
   }
 
   return (

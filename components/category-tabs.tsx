@@ -5,11 +5,10 @@ import { Coffee, Leaf, Croissant, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const categories = [
-  { id: 'all', label: 'All', icon: Sparkles },
-  { id: 'coffee', label: 'Coffee', icon: Coffee },
-  { id: 'tea', label: 'Tea', icon: Leaf },
-  { id: 'pastry', label: 'Pastry', icon: Croissant },
-  { id: 'specialty', label: 'Specialty', icon: Sparkles },
+  { id: 'all', label: 'Tất cả', icon: Sparkles },
+  { id: 'coffee', label: 'Cà phê', icon: Coffee },
+  { id: 'tea', label: 'Trà', icon: Leaf },
+  { id: 'specialty', label: 'Đặc biệt', icon: Sparkles },
 ]
 
 interface CategoryTabsProps {

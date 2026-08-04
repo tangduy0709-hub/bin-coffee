@@ -25,7 +25,7 @@ export interface CartItem extends MenuItem {
 
 export interface Order {
   id: string
-  order_number?: string // Thêm trường này để đồng bộ với Backend
+  order_number?: string 
   items: CartItem[]
   total: number
   status: 'pending' | 'preparing' | 'ready' | 'completed'
@@ -41,14 +41,14 @@ interface CartStore {
   addItem: (item: MenuItem, customizations?: CartItem['customizations']) => void
   removeItem: (itemId: string) => void
   updateQuantity: (itemId: string, quantity: number) => void
-
   clearCart: () => void
   getTotal: () => number
   getItemCount: () => number
   setTableNumber: (tableNumber: string) => void
   placeOrder: () => Order | null
   updateOrderStatus: (status: Order['status']) => void
-  setRealOrder: (order: any) => void // Hàm mới để lưu đơn thật
+  setRealOrder: (order: any) => void
+  setOrder: (order: any) => void
 }
 
 export const useCartStore = create<CartStore>((set, get) => ({
@@ -152,9 +152,8 @@ export const useCartStore = create<CartStore>((set, get) => ({
         : null,
     })),
 
-  // THÊM HÀM MỚI Ở ĐÂY
-  setRealOrder: (order) =>
-    set({ currentOrder: order }),
+  setRealOrder: (order) => set({ currentOrder: order }),
+  setOrder: (order) => set({ currentOrder: order }),
 }))
 
 export const menuItems: MenuItem[] = [

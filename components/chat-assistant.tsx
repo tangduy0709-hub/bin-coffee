@@ -12,6 +12,7 @@ import {
   User,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useCartStore } from '@/lib/store' // Đã thêm thư viện gọi Giỏ hàng
 
 interface ChatMessage {
   id: string
@@ -19,37 +20,24 @@ interface ChatMessage {
   content: string
 }
 
-const SESSION_KEY = 'qwenpaw_session_id'
-
-function getSessionId(): string {
-  if (typeof window === 'undefined') return ''
-  let id = sessionStorage.getItem(SESSION_KEY)
-  if (!id) {
-    id = `coffee-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    sessionStorage.setItem(SESSION_KEY, id)
-  }
-  return id
-}
-
-function useQwenpawChat() {
+function useGeminiChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const sessionIdRef = useRef<string>('')
-
-  useEffect(() => {
-    sessionIdRef.current = getSessionId()
-  }, [])
+  
+  // Đã thêm: Kéo số bàn từ giỏ hàng ra
+  const tableNumber = useCartStore((state) => state.tableNumber)
 
   const sendMessage = useCallback(async (text: string) => {
+    // 1. Hiển thị tin nhắn của khách lên màn hình
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
       content: text,
     }
-
     setMessages((prev) => [...prev, userMsg])
     setIsLoading(true)
 
+    // 2. Tạo một bong bóng chat trống để đợi AI trả lời
     const assistantId = `assistant-${Date.now()}`
     const assistantMsg: ChatMessage = {
       id: assistantId,
@@ -59,84 +47,39 @@ function useQwenpawChat() {
     setMessages((prev) => [...prev, assistantMsg])
 
     try {
+      // 3. Gửi tin nhắn lên "Bộ não" (kèm theo số bàn)
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          session_id: sessionIdRef.current,
-        }),
+        body: JSON.stringify({ message: text, tableNumber }), // Đã gói thêm tableNumber
       })
 
-      if (!res.body) throw new Error('No response body')
+      const data = await res.json()
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+      // 4. Cập nhật câu trả lời của AI vào bong bóng chat
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId ? { ...m, content: data.reply } : m
+        )
+      )
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const event = JSON.parse(line.slice(6))
-            if (event.error) {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === assistantId
-                    ? { ...m, content: `Error: ${event.error.message}` }
-                    : m,
-                ),
-              )
-              setIsLoading(false)
-              return
-            }
-
-            if (
-              event.status === 'in_progress' ||
-              event.status === 'completed'
-            ) {
-              if (event.output) {
-                for (const item of event.output) {
-                  if (item.role === 'assistant') {
-                    for (const content of item.content || []) {
-                      if (content.type === 'text') {
-                        setMessages((prev) =>
-                          prev.map((m) =>
-                            m.id === assistantId
-                              ? { ...m, content: content.text }
-                              : m,
-                          ),
-                        )
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          } catch {
-            // skip malformed JSON
-          }
-        }
+      // 5. Nếu AI vừa chốt đơn xong, chạy thêm hiệu ứng hoặc thông báo
+      if (data.action === "order_created") {
+        console.log("🎉 Ting! Khách vừa chốt đơn qua Chatbot thành công!")
       }
+
     } catch (err) {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
-            ? { ...m, content: `Connection error: ${(err as Error).message}` }
-            : m,
-        ),
+            ? { ...m, content: `Xin lỗi, hệ thống đang bận: ${(err as Error).message}` }
+            : m
+        )
       )
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [tableNumber]) // Cập nhật dependency
 
   return { messages, sendMessage, isLoading }
 }
@@ -147,7 +90,7 @@ export function ChatAssistant() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const { messages, sendMessage, isLoading } = useQwenpawChat()
+  const { messages, sendMessage, isLoading } = useGeminiChat()
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -166,9 +109,10 @@ export function ChatAssistant() {
     setInput('')
   }
 
+  // Đã sửa lại gợi ý cho hợp với menu đồ uống
   const quickActions = [
-    { label: 'Recommend a drink', icon: Coffee },
-    { label: 'What pairs with latte?', icon: Sparkles },
+    { label: 'Gợi ý món best-seller', icon: Sparkles },
+    { label: 'Cho 1 Nước Cam', icon: Coffee },
   ]
 
   return (
@@ -211,7 +155,7 @@ export function ChatAssistant() {
                     Trợ lý Barista
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    {isLoading ? 'Đang trả lời...' : 'Sẵn sàng'}
+                    {isLoading ? 'Đang soạn tin...' : 'Trực tuyến'}
                   </p>
                 </div>
               </div>
@@ -232,10 +176,10 @@ export function ChatAssistant() {
                     <Bot className="h-8 w-8 text-primary" />
                   </div>
                   <h4 className="mb-2 font-serif text-lg font-semibold text-foreground">
-                    Hi there!
+                    Xin chào!
                   </h4>
                   <p className="mb-6 max-w-[250px] text-sm text-muted-foreground">
-                    {"I'm your personal barista assistant. Ask me anything about our menu or get personalized recommendations!"}
+                    Mình là trợ lý ảo của quán. Bạn muốn gọi món gì hay cần tư vấn đồ uống cứ nhắn mình nhé!
                   </p>
                   <div className="flex flex-col gap-2">
                     {quickActions.map((action) => (
@@ -281,7 +225,7 @@ export function ChatAssistant() {
                             : 'bg-muted/50 text-foreground rounded-tl-sm'
                         }`}
                       >
-                        <p className="text-sm leading-relaxed">
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">
                           {message.content || (isLoading ? '...' : '')}
                         </p>
                       </div>
@@ -330,7 +274,7 @@ export function ChatAssistant() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Hỏi về thực đơn hoặc đặt món..."
+                  placeholder="Gõ tin nhắn để đặt món..."
                   disabled={isLoading}
                   className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                 />
@@ -344,7 +288,7 @@ export function ChatAssistant() {
                 </Button>
               </div>
               <p className="mt-2 text-center text-[10px] text-muted-foreground">
-                Powered by QwenPaw AI - Your friendly barista assistant
+                Powered by Gemini AI - Hệ thống tự động chốt đơn
               </p>
             </form>
           </motion.div>

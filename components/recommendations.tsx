@@ -20,9 +20,9 @@ export function Recommendations() {
         </div>
         <div>
           <h2 className="font-serif text-lg font-semibold text-foreground">
-            {"Today's Picks"}
+            {'Lựa chọn hôm nay'}
           </h2>
-          <p className="text-xs text-muted-foreground">Curated just for you</p>
+          <p className="text-xs text-muted-foreground">Được tuyển chọn dành cho bạn</p>
         </div>
       </div>
 
@@ -77,7 +77,7 @@ function RecommendationCard({
             variant="secondary"
             className="h-8 gap-1 rounded-full text-xs"
           >
-            Add
+            Thêm
             <ArrowRight className="h-3 w-3" />
           </Button>
         </div>

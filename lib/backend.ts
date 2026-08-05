@@ -1,4 +1,4 @@
-export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000'
+export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://bin-coffee.onrender.com'
 
 export async function submitOrderToBackend(order: unknown) {
   return fetch(`${BACKEND_URL}/api/order`, {

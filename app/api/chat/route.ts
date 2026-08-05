@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       if (call.name === 'createOrder') {
         const items = (call.args as any).items;
 
-        const backendRes = await fetch('http://localhost:4000/api/order', {
+        const backendRes = await fetch('https://bin-coffee.onrender.com/api/order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tableNumber, items, note: 'Chatbot AI' }),

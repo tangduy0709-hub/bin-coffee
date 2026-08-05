@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import toast, { Toaster } from 'react-hot-toast';
 import client from '@/lib/mqttClient'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { io } from 'socket.io-client'
 import { LayoutDashboard, History, LayoutGrid, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BACKEND_URL, updateOrderStatus, updatePaymentStatus } from '@/lib/backend'
@@ -188,18 +187,6 @@ export default function DashboardPage() {
   }, [orders, selectedTableDetails]);
 
   // ===============================================================
-
-  useEffect(() => {
-    const socket = io(BACKEND_URL, { transports: ['websocket'] })
-    socket.on('connect', () => console.log('Connected to backend dashboard socket'))
-    socket.on('order:new', (order: KitchenOrder) => setOrders((prev) => [order, ...prev]))
-    
-    socket.on('order:updated', (updatedOrder: KitchenOrder) => {
-      setOrders((prev) => prev.map((order) => String(order.id) === String(updatedOrder?.id) ? { ...order, ...updatedOrder } : order))
-    })
-    
-    return () => { socket.disconnect() }
-  }, [])
 
   useEffect(() => {
     const handleMqttMessage = (topic: string, message: Buffer) => {

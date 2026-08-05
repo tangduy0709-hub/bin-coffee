@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 
 // Config
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000'
+const BASE_URL = process.env.BASE_URL || 'https://bin-coffee.vercel.app'
 const NUM_TABLES = 3 // Số bàn trong quán (chỉ tạo cho bàn 1-3)
 
 async function generateQRCodes() {

@@ -8,10 +8,10 @@ const WebSocket = require('ws');
 require('dotenv').config()
 
 const BACKEND_PORT = process.env.BACKEND_PORT || 4000
-const DATABASE_HOST = process.env.DATABASE_HOST || '127.0.0.1'
-const DATABASE_PORT = Number(process.env.DATABASE_PORT || 3306)
-const DATABASE_USER = process.env.DATABASE_USER || 'root'
-const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD || ''
+const DATABASE_HOST = process.env.DATABASE_HOST || 'mysql-1dd6189a-tangduy0709-e610.b.aivencloud.com'
+const DATABASE_PORT = Number(process.env.DATABASE_PORT || 10746)
+const DATABASE_USER = process.env.DATABASE_USER || 'avnadmin'
+const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD || 'AVNS_sUg2iMspPzJpxH-JnVH'
 const DATABASE_NAME = process.env.DATABASE_NAME || 'coffee_shop'
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://test.mosquitto.org:1883'
 
@@ -34,7 +34,15 @@ let pool
 let mqttClient
 
 async function connectDatabase() {
-  const dbConfig = { host: DATABASE_HOST, port: DATABASE_PORT, user: DATABASE_USER, password: DATABASE_PASSWORD, multipleStatements: true, connectTimeout: 10000 }
+  const dbConfig = { 
+    host: DATABASE_HOST, 
+    port: DATABASE_PORT, 
+    user: DATABASE_USER, 
+    password: DATABASE_PASSWORD, 
+    multipleStatements: true, 
+    connectTimeout: 10000,
+    ssl: { rejectUnauthorized: false }
+  }
   const maxAttempts = 5
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {

@@ -7,7 +7,6 @@ import { useCartStore } from '@/lib/store'
 import { formatVND } from '@/lib/utils'
 import { useState } from 'react'
 import Image from 'next/image'
-import { submitOrderToBackend } from '@/lib/backend'
 import client from '@/lib/mqttClient'
 
 export function FloatingCart() {
@@ -47,61 +46,64 @@ export function FloatingCart() {
         }),
       });
 
-      if (response.ok) {
-        const realOrder = await response.json();
-        setRealOrder(realOrder); 
-
-        try {
-          const mqttPayload = {
-            id: realOrder?.id ?? order.id,
-            order_number: realOrder?.order_number ?? order.id,
-            table: String(order.tableNumber),
-            total: order.total,
-            items: order.items.map((item) => ({
-              id: item.id,
-              name: item.name,
-              quantity: item.quantity,
-              price: item.price,
-              customizations: item.customizations,
-            })),
-            status: 'pending',
-          };
-
-          client.publish('cafe/dashboard/new_order', JSON.stringify(mqttPayload));
-          console.log('✅ Đã gửi đơn mới qua MQTT:', mqttPayload);
-        } catch (error) {
-          console.warn('❌ MQTT publish failed:', error);
-        }
-
-        // ================= CẤU HÌNH VIETQR CỦA BẠN Ở ĐÂY =================
-        const BANK_ID = "MB"; // VD: mb, techcombank, acb, momo, vtp...
-        const ACCOUNT_NO = "00428939279999"; // Số tài khoản ngân hàng của bạn
-        const ACCOUNT_NAME = "TANG NGUYEN ANH DUY"; // Tên chủ tài khoản (In hoa không dấu)
-        // =================================================================
-
-        // Tạo nội dung chuyển khoản tự động
-        const amount = total;
-        setQrAmount(amount);
-        const description = `Thanh toan ban ${order.tableNumber}`;
-        
-        // Gọi API của VietQR để đúc ảnh QR
-        const generatedQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(description)}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`;
-        
-        setQrUrl(generatedQrUrl);
-        setShowQR(true); // Mở bảng QR
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Server trả về lỗi:', response.status, errorText);
+        alert('Lỗi server: ' + response.status);
+        setIsSubmitting(false);
+        return;
       }
+
+      const realOrder = await response.json();
+      setRealOrder(realOrder); 
+
+      try {
+        const mqttPayload = {
+          id: realOrder?.id ?? order.id,
+          order_number: realOrder?.order_number ?? order.id,
+          table: String(order.tableNumber),
+          total: order.total,
+          items: order.items.map((item) => ({
+            id: item.id,
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            customizations: item.customizations,
+          })),
+          status: 'pending',
+        };
+
+        client.publish('cafe/dashboard/new_order', JSON.stringify(mqttPayload));
+        console.log('✅ Đã gửi đơn mới qua MQTT:', mqttPayload);
+      } catch (error) {
+        console.warn('❌ MQTT publish failed:', error);
+      }
+
+      // ================= CẤU HÌNH VIETQR =================
+      const BANK_ID = "MB";
+      const ACCOUNT_NO = "00428939279999";
+      const ACCOUNT_NAME = "TANG NGUYEN ANH DUY";
+      // ====================================================
+
+      const amount = total;
+      setQrAmount(amount);
+      const description = `Thanh toan ban ${order.tableNumber}`;
+      
+      const generatedQrUrl = `https://img.vietqr.io/image/${BANK_ID}-${ACCOUNT_NO}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(description)}&accountName=${encodeURIComponent(ACCOUNT_NAME)}`;
+      
+      setQrUrl(generatedQrUrl);
+      setShowQR(true); 
     } catch (error) {
       console.warn('Backend order submission failed', error);
+      alert('Không thể kết nối đến máy chủ!');
     } finally {
       setIsSubmitting(false);
-      // Không đóng giỏ hàng ngay lập tức để giữ popup QR nằm phía trên
     }
   };
 
   const handleCloseAll = () => {
     setShowQR(false);
     setIsOpen(false);
-    // Nếu bạn có hàm clearCart() trong store, bạn có thể gọi ở đây để dọn giỏ hàng sau khi khách đã thanh toán
   }
 
   if (itemCount === 0 && !isOpen && !showQR) return null
@@ -184,18 +186,6 @@ export function FloatingCart() {
                         <div>
                           <h4 className="font-medium text-card-foreground">{item.name}</h4>
                           <p className="text-sm text-muted-foreground">{formatVND(item.price)}</p>
-                          
-                          {item.customizations &&
-                            (item.customizations.ice !== 'normal' || item.customizations.sugar !== 'normal') && (
-                              <div className="mt-2 space-y-1 text-xs text-muted-foreground">
-                                {item.customizations.ice !== 'normal' && (
-                                  <p>Đá: {item.customizations.ice === 'none' ? 'Không' : item.customizations.ice === 'light' ? 'Ít' : item.customizations.ice === 'extra' ? 'Nhiều' : 'Vừa'}</p>
-                                )}
-                                {item.customizations.sugar !== 'normal' && (
-                                  <p>Đường: {item.customizations.sugar === 'none' ? 'Không' : item.customizations.sugar === 'light' ? 'Ít' : item.customizations.sugar === 'extra' ? 'Nhiều' : 'Vừa'}</p>
-                                )}
-                              </div>
-                          )}
                         </div>
 
                         <div className="flex items-center justify-between">
@@ -239,7 +229,7 @@ export function FloatingCart() {
         )}
       </AnimatePresence>
 
-      {/* POPUP MÃ QR THANH TOÁN (Hiển thị sau khi đặt món thành công) */}
+      {/* POPUP MÃ QR THANH TOÁN */}
       <AnimatePresence mode="wait">
         {showQR && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -265,7 +255,6 @@ export function FloatingCart() {
                 Vui lòng quét mã QR dưới đây bằng ứng dụng ngân hàng để thanh toán.
               </p>
 
-              {/* Khung chứa mã QR */}
               <div className="bg-white p-3 rounded-2xl shadow-sm border border-border w-full aspect-square relative mb-6">
                 {qrUrl ? (
                   <img src={qrUrl} alt="Mã QR Thanh Toán" className="w-full h-full object-contain rounded-xl" />

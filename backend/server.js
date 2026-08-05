@@ -8,11 +8,8 @@ const WebSocket = require('ws');
 require('dotenv').config()
 
 const BACKEND_PORT = process.env.BACKEND_PORT || 4000
-const DATABASE_HOST = process.env.DATABASE_HOST || 'mysql-1dd6189a-tangduy0709-e610.b.aivencloud.com'
-const DATABASE_PORT = Number(process.env.DATABASE_PORT || 10746)
-const DATABASE_USER = process.env.DATABASE_USER || 'avnadmin'
-const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD || 'AVNS_sUg2iMspPzJpxH-JnVH'
-const DATABASE_NAME = process.env.DATABASE_NAME || 'coffee_shop'
+// 🔒 Đã xóa sạch mật khẩu cứng ở đây để GitHub không chặn
+const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD || ''
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://test.mosquitto.org:1883'
 
 // =========================================================
@@ -34,24 +31,33 @@ let pool
 let mqttClient
 
 async function connectDatabase() {
-  const dbConfig = { 
-    host: DATABASE_HOST, 
-    port: DATABASE_PORT, 
-    user: DATABASE_USER, 
-    password: DATABASE_PASSWORD, 
-    multipleStatements: true, 
-    connectTimeout: 10000,
-    ssl: { rejectUnauthorized: false }
-  }
   const maxAttempts = 5
+  
+  // 🔒 CHỈ DÙNG BIẾN MÔI TRƯỜNG ĐỂ QUA MẶT GITHUB
+  const connectionString = process.env.DATABASE_URL;
+
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const initialConnection = await mysql.createConnection(dbConfig)
-      await initialConnection.query(`CREATE DATABASE IF NOT EXISTS \`${DATABASE_NAME}\``)
-      await initialConnection.end()
+      if (!connectionString) {
+        throw new Error("Chưa có biến DATABASE_URL. Hãy thêm biến này trên Render!");
+      }
 
-      pool = mysql.createPool({ ...dbConfig, database: DATABASE_NAME, waitForConnections: true, connectionLimit: 10, queueLimit: 0 })
+      // Tạo pool trực tiếp bằng chuỗi kết nối an toàn từ Render
+      pool = mysql.createPool({
+        uri: connectionString,
+        waitForConnections: true,
+        connectionLimit: 10,
+        queueLimit: 0,
+        multipleStatements: true,
+        connectTimeout: 10000
+      })
 
+      // Test kết nối thử xem thông suốt chưa
+      const connection = await pool.getConnection();
+      console.log(`✅ Đã kết nối thành công tới Database Aiven Cloud!`);
+      connection.release();
+
+      // Tự động tạo các bảng nếu chưa có
       await pool.query(`
         CREATE TABLE IF NOT EXISTS menu (
           id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(191) NOT NULL, description TEXT, price DECIMAL(10,2) NOT NULL,
@@ -101,9 +107,10 @@ async function connectDatabase() {
         await pool.query('INSERT INTO tables (table_number, token) VALUES ?', [tableData])
       }
 
-      console.log(`Connected to MySQL database '${DATABASE_NAME}' on ${DATABASE_HOST}:${DATABASE_PORT}`)
+      console.log(`Database initialized successfully!`)
       return
     } catch (error) {
+      console.warn(`Lần thử kết nối ${attempt} thất bại:`, error.message);
       if (attempt === maxAttempts) throw error
       await new Promise((resolve) => setTimeout(resolve, 3000))
     }

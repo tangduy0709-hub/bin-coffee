@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import toast, { Toaster } from 'react-hot-toast';
+import client from '@/lib/mqttClient'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { io } from 'socket.io-client'
 import { LayoutDashboard, History, LayoutGrid, X } from 'lucide-react'
@@ -59,6 +60,8 @@ export default function DashboardPage() {
   const [isMounted, setIsMounted] = useState(false);
   const [orders, setOrders] = useState<KitchenOrder[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [mqttConnected, setMqttConnected] = useState(false)
+  const [soDonChoLam, setSoDonChoLam] = useState(0)
   
   const [activeTab, setActiveTab] = useState<'orders' | 'statistics' | 'tables'>('orders');
   const [selectedDate, setSelectedDate] = useState<string>("");
@@ -199,6 +202,100 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
+    const handleMqttMessage = (topic: string, message: Buffer) => {
+      try {
+        const data = JSON.parse(message.toString());
+
+        if (topic === 'cafe/dashboard/new_order') {
+          console.log('🔔 Có đơn mới:', data);
+          setSoDonChoLam((prev) => prev + 1);
+          setOrders((prev) => {
+            const existing = prev.some((order) => String(order.id) === String(data.id) || String(order.order_number) === String(data.id));
+            if (existing) return prev;
+
+            const items = Array.isArray(data.items)
+              ? data.items.map((item: any) => ({
+                  id: item.id?.toString() ?? `${Math.random().toString(36).slice(2, 8)}`,
+                  name: item.name ?? 'Món mới',
+                  quantity: Number(item.quantity || 1),
+                  price: Number(item.price || 0),
+                  customizations: item.customizations,
+                }))
+              : [{
+                  id: data.item ? data.item.replace(/\s+/g, '-').toLowerCase() : '1',
+                  name: String(data.item ?? 'Món mới'),
+                  quantity: 1,
+                  price: Number(data.price || 0),
+                  customizations: {},
+                }];
+
+            const newOrder: KitchenOrder = {
+              id: Number(data.id) || Date.now(),
+              order_number: String(data.order_number ?? data.id ?? `MQTT-${Date.now()}`),
+              table_number: String(data.table ?? data.tableNumber ?? '1'),
+              total: Number(data.total || items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0)),
+              status: 'pending',
+              created_at: new Date().toISOString(),
+              items,
+            };
+
+            toast.success('📥 Đã nhận được đơn mới từ MQTT!');
+            return [newOrder, ...prev];
+          });
+        }
+
+        if (topic === 'cafe/dashboard/status') {
+          console.log('✅ ESP32 báo trạng thái đơn:', data);
+          if (data.status === 'COMPLETED') {
+            toast.success(`Mạch đã làm xong đơn ${data.id}!`);
+            setSoDonChoLam((prev) => Math.max(0, prev - 1));
+            setOrders((prev) =>
+              prev.map((order) =>
+                String(order.id) === String(data.id) || String(order.order_number) === String(data.id)
+                  ? { ...order, status: 'completed' }
+                  : order
+              )
+            );
+          }
+        }
+      } catch (error) {
+        console.error('MQTT message parse failed:', error);
+      }
+    };
+
+    const handleConnect = () => setMqttConnected(true);
+    const handleDisconnect = () => setMqttConnected(false);
+    const handleError = () => setMqttConnected(false);
+
+    client.on('connect', handleConnect);
+    client.on('reconnect', handleDisconnect);
+    client.on('offline', handleDisconnect);
+    client.on('error', handleError);
+
+    if (client.connected) {
+      setMqttConnected(true);
+    }
+
+    client.subscribe('cafe/dashboard/status', (err) => {
+      if (err) console.error('MQTT subscribe failed:', err);
+    });
+    client.subscribe('cafe/dashboard/new_order', (err) => {
+      if (err) console.error('MQTT subscribe failed:', err);
+    });
+    client.on('message', handleMqttMessage);
+
+    return () => {
+      client.removeListener('message', handleMqttMessage);
+      client.removeListener('connect', handleConnect);
+      client.removeListener('reconnect', handleDisconnect);
+      client.removeListener('offline', handleDisconnect);
+      client.removeListener('error', handleError);
+      client.unsubscribe('cafe/dashboard/status');
+      client.unsubscribe('cafe/dashboard/new_order');
+    };
+  }, [])
+
+  useEffect(() => {
     setIsLoading(true)
     fetch(`${BACKEND_URL}/api/orders`)
       .then((res) => res.json())
@@ -225,6 +322,15 @@ export default function DashboardPage() {
             <div>
               <p className="text-sm uppercase tracking-[0.24em] text-muted-foreground">Quầy pha chế</p>
               <h1 className="mt-2 text-3xl font-semibold text-foreground">Hệ thống quản lý Cafe</h1>
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+                <div className={`flex items-center gap-2 rounded-full px-3 py-1 ${mqttConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  <span className={`h-2.5 w-2.5 rounded-full ${mqttConnected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
+                  {mqttConnected ? 'Đã kết nối MQTT' : 'Mất kết nối MQTT...'}
+                </div>
+                <div className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
+                  ⏳ {soDonChoLam} đơn chờ làm
+                </div>
+              </div>
             </div>
             
             <div className="flex bg-muted/50 p-1 rounded-2xl w-full sm:w-auto overflow-x-auto">

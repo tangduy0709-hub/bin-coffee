@@ -8,6 +8,7 @@ import { formatVND } from '@/lib/utils'
 import { useState } from 'react'
 import Image from 'next/image'
 import { submitOrderToBackend } from '@/lib/backend'
+import client from '@/lib/mqttClient'
 
 export function FloatingCart() {
   const [isOpen, setIsOpen] = useState(false)
@@ -49,6 +50,28 @@ export function FloatingCart() {
       if (response.ok) {
         const realOrder = await response.json();
         setRealOrder(realOrder); 
+
+        try {
+          const mqttPayload = {
+            id: realOrder?.id ?? order.id,
+            order_number: realOrder?.order_number ?? order.id,
+            table: String(order.tableNumber),
+            total: order.total,
+            items: order.items.map((item) => ({
+              id: item.id,
+              name: item.name,
+              quantity: item.quantity,
+              price: item.price,
+              customizations: item.customizations,
+            })),
+            status: 'pending',
+          };
+
+          client.publish('cafe/dashboard/new_order', JSON.stringify(mqttPayload));
+          console.log('✅ Đã gửi đơn mới qua MQTT:', mqttPayload);
+        } catch (error) {
+          console.warn('❌ MQTT publish failed:', error);
+        }
 
         // ================= CẤU HÌNH VIETQR CỦA BẠN Ở ĐÂY =================
         const BANK_ID = "MB"; // VD: mb, techcombank, acb, momo, vtp...

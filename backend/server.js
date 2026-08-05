@@ -45,6 +45,7 @@ async function connectDatabase() {
       // Tạo pool trực tiếp bằng chuỗi kết nối an toàn từ Render
       pool = mysql.createPool({
         uri: connectionString,
+        ssl: { rejectUnauthorized: false }, // THÊM DÒNG NÀY ĐỂ BẬT SSL CHUẨN
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,

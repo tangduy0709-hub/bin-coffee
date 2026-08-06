@@ -5,6 +5,7 @@ const mqtt = require('mqtt')
 const mysql = require('mysql2/promise')
 const { Server } = require('socket.io')
 const WebSocket = require('ws'); 
+const https = require('https'); // Dùng cho Firebase
 require('dotenv').config()
 
 const BACKEND_PORT = process.env.BACKEND_PORT || 4000
@@ -28,6 +29,18 @@ app.use(express.json())
 
 let pool
 let mqttClient
+
+// =========================================================
+// 🚀 HÀM KHỬ DẤU TIẾNG VIỆT (DÀNH RIÊNG CHO ESP32)
+// =========================================================
+function boDauTiengViet(str) {
+  if (!str) return "";
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+}
 
 async function connectDatabase() {
   const maxAttempts = 5
@@ -171,10 +184,14 @@ async function createOrderRecord({ tableNumber, items, note }) {
   io.emit('order:updated', newOrderObj); 
 
   if (mqttClient && mqttClient.connected) {
+    // 🚀 KHỬ DẤU TRƯỚC KHI BẮN QUA MQTT CHO MẠCH QUẦY ESP32
+    const chuoiMonAn = items.map(i => `${i.quantity}x ${i.name}`).join(', ');
+    const chuoiKhongDau = boDauTiengViet(chuoiMonAn);
+
     const espPayload = JSON.stringify({
       id: orderNumber,
       table: String(tableNumber),
-      item: items.map(i => `${i.quantity}x ${i.name}`).join(', ')
+      item: chuoiKhongDau // <--- Mạch ESP32 sẽ nhận "Ca Phe Da" thay vì "Cà Phê Đá"
     });
     
     mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
@@ -413,7 +430,6 @@ async function startServer() {
     
     mqttClient.on('connect', () => { 
       console.log('MQTT connected successfully!')
-      // 🚀 Đăng ký lắng nghe tín hiệu bấm nút từ ESP32 ở quầy
       mqttClient.subscribe('cafe/dashboard/status', (err) => {
         if (!err) console.log('Đã subscribe thành công kênh cafe/dashboard/status');
       });
@@ -421,7 +437,6 @@ async function startServer() {
 
     mqttClient.on('error', (error) => { console.warn('MQTT error:', error.message) })
 
-    // 🚀 Lắng nghe trạng thái khi phần cứng ESP32 gửi lên
     mqttClient.on('message', async (topic, message) => {
       if (topic === 'cafe/dashboard/status') {
         try {
@@ -430,7 +445,6 @@ async function startServer() {
           const newStatus = data.status === 'COMPLETED' ? 'completed' : (data.status === 'PREPARING' ? 'preparing' : 'ready');
 
           if (orderIdOrNum) {
-            // Cập nhật Database
             await pool.query(
               'UPDATE orders SET status = ? WHERE id = ? OR order_number = ?', 
               [newStatus, orderIdOrNum, orderIdOrNum]
@@ -440,37 +454,45 @@ async function startServer() {
             const updatedOrder = ordersList.find(o => String(o.id) === String(orderIdOrNum) || o.order_number === orderIdOrNum);
 
             if (updatedOrder) {
-              // Bắn Socket cho Dashboard quản lý
               io.emit('order:updated', updatedOrder);
 
-              // Bắn MQTT thông báo riêng cho Web của Bàn khách
               if (updatedOrder.table_number) {
                 await publishTableNotification(updatedOrder.table_number, { 
                   event: 'order_updated', 
                   order: updatedOrder 
                 });
 
-                // =========================================================
-                // 🚀 GỌI FIREBASE ĐỂ BÁO CÒI/LED CHO BÀN KHÁCH HÀNG KHI XONG
-                // =========================================================
                 if (newStatus === 'completed' || newStatus === 'ready') {
-                  try {
-                    const matchSoBan = String(updatedOrder.table_number).match(/\d+/);
-                    const soBanFirebase = matchSoBan ? matchSoBan[0] : "1";
-                    
-                    await fetch("https://cafe-thong-bao-default-rtdb.firebaseio.com/thong_bao.json", {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        ban: soBanFirebase,
-                        trang_thai: "READY",
-                        thoi_gian: Date.now()
-                      })
-                    });
-                    console.log(`🔥 Đã bắn tín hiệu Firebase gọi còi cho mạch cứng Bàn ${soBanFirebase}!`);
-                  } catch (err) {
-                    console.error('Lỗi gọi Firebase từ backend:', err.message);
-                  }
+                  const matchSoBan = String(updatedOrder.table_number).match(/\d+/);
+                  const soBanFirebase = matchSoBan ? matchSoBan[0] : "1";
+                  
+                  const payloadData = JSON.stringify({
+                    ban: soBanFirebase,
+                    trang_thai: "READY",
+                    thoi_gian: Date.now()
+                  });
+
+                  const options = {
+                    hostname: 'cafe-thong-bao-default-rtdb.firebaseio.com',
+                    port: 443,
+                    path: '/thong_bao.json',
+                    method: 'PUT',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Content-Length': Buffer.byteLength(payloadData)
+                    }
+                  };
+
+                  const reqData = https.request(options, (resFirebase) => {
+                    console.log(`🔥 Đã bắn tín hiệu Firebase gọi còi Bàn ${soBanFirebase} (Mã trạng thái: ${resFirebase.statusCode})`);
+                  });
+
+                  reqData.on('error', (e) => {
+                    console.error(`Lỗi kết nối Firebase từ backend: ${e.message}`);
+                  });
+
+                  reqData.write(payloadData);
+                  reqData.end();
                 }
               }
               console.log(`✅ Đồng bộ từ phần cứng quầy: Đơn ${orderIdOrNum} chuyển thành "${newStatus}"`);

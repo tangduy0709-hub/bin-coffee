@@ -393,27 +393,21 @@ function connectXiaoZhi(url, index) {
             note: 'Khách gọi qua AI', 
           });
 
-          // 1. Bắn qua Socket để Dashboard quản lý tự động nhảy đơn ngay lập tức
+          // 🚀 2. BẮN TÍN HIỆU SOCKET CHO DASHBOARD QUẢN LÝ (Giúp Dashboard tự hiện đơn không cần F5)
           io.emit('order:new', order);
 
-          // 2. BỔ SUNG: Bắn tín hiệu qua MQTT để phần cứng ở quầy nhận được đơn
-          await publishTableNotification(tableNumber, { event: 'voice_order_received', order });
-          
-          // Gửi thêm một lệnh tổng cho quầy (nếu phần cứng quầy của bạn đang lắng nghe kênh chung)
+          // 3. BẮN TÍN HIỆU MQTT CHO PHẦN CỨNG Ở QUẦY (Đã làm phần cứng reo còi thành công)
           if (mqttClient && mqttClient.connected) {
             const espPayload = JSON.stringify({
-              id: order.order_number || String(order.id),
-              table: String(order.table_number),
-              item: order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')
+              id: order.order_number,
+              table: String(tableNumber),
+              item: orderItems.map(i => `${i.quantity}x ${i.name}`).join(', ')
             });
-            
-            // Bắn vào đúng kênh mà ESP32 đang lắng nghe
             mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
-            // Đồng thời bắn sang kênh cũ nếu cần
             mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 });
           }
 
-          console.log(`✅ Đã tạo đơn AI cho Bàn ${tableNumber} và báo phần cứng thành công!`);
+          console.log(`✅ Đã đồng bộ thành công cho cả Dashboard và Phần cứng quầy!`);
           
           ws.send(JSON.stringify({
             jsonrpc: "2.0", 

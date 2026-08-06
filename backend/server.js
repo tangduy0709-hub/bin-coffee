@@ -8,16 +8,15 @@ const WebSocket = require('ws');
 require('dotenv').config()
 
 const BACKEND_PORT = process.env.BACKEND_PORT || 4000
-// 🔒 Đã xóa sạch mật khẩu cứng ở đây để GitHub không chặn
 const DATABASE_PASSWORD = process.env.DATABASE_PASSWORD || ''
 const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://test.mosquitto.org:1883'
 
 // =========================================================
-// 🚀 ĐIỀN LINK CỦA TẤT CẢ CÁC BÀN VÀO ĐÂY (Trong dấu ngoặc kép, cách nhau dấu phẩy)
+// 🚀 ĐIỀN LINK CỦA TẤT CẢ CÁC BÀN VÀO ĐÂY
 // =========================================================
 const XIAO_ZHI_WSS_URLS = [
   "wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjk2NjE1OCwiYWdlbnRJZCI6MjAwNzI0NywiZW5kcG9pbnRJZCI6ImFnZW50XzIwMDcyNDciLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzgzMjc5OTY5LCJleHAiOjE4MTQ4Mzc1Njl9.OSjXO--WevFiUADNrk28UkmhDEQpbk5v5iXuCE0xgp7fVcqmOWz8FUIUyfp9zhBkEbH1v4Fr62O-zyuyz8S8XA", // BÀN 1
-  "wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjk2NjE1OCwiYWdlbnRJZCI6MjIwNTQxMywiZW5kcG9pbnRJZCI6ImFnZW50XzIyMDU0MTMiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzg1ODMzMzc0LCJleHAiOjE4MTczOTA5NzR9.Vi5To9JsZ6g8lDXcNgcjU-74y6CxSfoN74CnE4icyr4T1Y9X2x7bosQ9Vfe8eM4VbZKK3Da-w31tzNUAaDJd0g" // BÀN 2 (Copy từ giao diện XiaoZhi)
+  "wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjk2NjE1OCwiYWdlbnRJZCI6MjIwNTQxMywiZW5kcG9pbnRJZCI6ImFnZW50XzIyMDU0MTMiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzg1ODMzMzc0LCJleHAiOjE4MTczOTA5NzR9.Vi5To9JsZ6g8lDXcNgcjU-74y6CxSfoN74CnE4icyr4T1Y9X2x7bosQ9Vfe8eM4VbZKK3Da-w31tzNUAaDJd0g" // BÀN 2
 ];
 
 const app = express()
@@ -32,8 +31,6 @@ let mqttClient
 
 async function connectDatabase() {
   const maxAttempts = 5
-  
-  // 🔒 CHỈ DÙNG BIẾN MÔI TRƯỜNG ĐỂ QUA MẶT GITHUB
   const connectionString = process.env.DATABASE_URL;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -42,10 +39,9 @@ async function connectDatabase() {
         throw new Error("Chưa có biến DATABASE_URL. Hãy thêm biến này trên Render!");
       }
 
-      // Tạo pool trực tiếp bằng chuỗi kết nối an toàn từ Render
       pool = mysql.createPool({
         uri: connectionString,
-        ssl: { rejectUnauthorized: false }, // THÊM DÒNG NÀY ĐỂ BẬT SSL CHUẨN
+        ssl: { rejectUnauthorized: false },
         waitForConnections: true,
         connectionLimit: 10,
         queueLimit: 0,
@@ -53,12 +49,10 @@ async function connectDatabase() {
         connectTimeout: 10000
       })
 
-      // Test kết nối thử xem thông suốt chưa
       const connection = await pool.getConnection();
       console.log(`✅ Đã kết nối thành công tới Database Aiven Cloud!`);
       connection.release();
 
-      // Tự động tạo các bảng nếu chưa có
       await pool.query(`
         CREATE TABLE IF NOT EXISTS menu (
           id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(191) NOT NULL, description TEXT, price DECIMAL(10,2) NOT NULL,
@@ -149,6 +143,7 @@ async function findMenuItemByName(itemName) {
   } catch (error) { return null; }
 }
 
+// 🚀 HÀM TẠO ĐƠN SIÊU CẤP ĐÃ ĐƯỢC CHUẨN HÓA
 async function createOrderRecord({ tableNumber, items, note }) {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`
@@ -165,6 +160,7 @@ async function createOrderRecord({ tableNumber, items, note }) {
     id: orderId, 
     order_number: orderNumber, 
     table_number: tableNumber, 
+    table: tableNumber, // Dự phòng cho Dashboard
     total, 
     status: 'pending', 
     note: note || '', 
@@ -172,7 +168,11 @@ async function createOrderRecord({ tableNumber, items, note }) {
     items 
   };
 
-  // 🚀 TỰ ĐỘNG BẮN MQTT XUỐNG QUẦY MỖI KHI CÓ ĐƠN MỚI
+  // 1. TỰ ĐỘNG BẮN SOCKET CHO DASHBOARD QUẢN LÝ TỪ ĐÂY
+  io.emit('order:new', newOrderObj);
+  io.emit('order:updated', newOrderObj); 
+
+  // 2. TỰ ĐỘNG BẮN MQTT XUỐNG QUẦY TỪ ĐÂY
   if (mqttClient && mqttClient.connected) {
     const espPayload = JSON.stringify({
       id: orderNumber,
@@ -180,10 +180,9 @@ async function createOrderRecord({ tableNumber, items, note }) {
       item: items.map(i => `${i.quantity}x ${i.name}`).join(', ')
     });
     
-    // Bắn vào cả 2 kênh phổ biến để chắc chắn phần cứng ESP32 ở quầy nhận được sóng
     mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
     mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 });
-    console.log(`🔊 Đã phát còi MQTT xuống quầy cho đơn: ${orderNumber}`);
+    console.log(`🔊 Đã phát còi MQTT và Socket cho đơn: ${orderNumber}`);
   }
 
   return newOrderObj;
@@ -214,7 +213,7 @@ app.post('/api/order', async (req, res) => {
     const { tableNumber, items, note } = req.body
     if (!tableNumber || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Bàn và danh sách món là bắt buộc' })
     const order = await createOrderRecord({ tableNumber, items, note })
-    io.emit('order:new', order)
+    // Dòng io.emit thừa ở đây đã được gỡ bỏ
     await publishTableNotification(tableNumber, { event: 'order_received', order })
     res.status(201).json(order)
   } catch (error) { res.status(500).json({ error: 'Không thể tạo đơn hàng' }) }
@@ -260,7 +259,6 @@ const updateStatusHandler = async (req, res) => {
     const order = updatedOrder.find((o) => o.id === Number(id));
     io.emit('order:updated', order || null);
 
-    // 🚀 BỔ SUNG: Bắn thông báo qua MQTT để web khách hàng tự động cập nhật!
     if (order && order.table_number) {
       await publishTableNotification(order.table_number, { 
         event: 'order_updated', 
@@ -282,7 +280,6 @@ const updatePaymentHandler = async (req, res) => {
     const order = updatedOrder.find((o) => o.id === Number(id));
     io.emit('order:updated', order || null);
 
-    // 🚀 BỔ SUNG TƯƠNG TỰ CHO THANH TOÁN
     if (order && order.table_number) {
       await publishTableNotification(order.table_number, { 
         event: 'order_updated', 
@@ -298,7 +295,7 @@ app.put('/api/order/:id/payment', updatePaymentHandler);
 
 
 // =========================================================
-// HÀM KẾT NỐI XIAO ZHI CHO TỪNG BÀN (HỖ TRỢ NHIỀU BÀN CÙNG LÚC)
+// HÀM KẾT NỐI XIAO ZHI CHO TỪNG BÀN 
 // =========================================================
 function connectXiaoZhi(url, index) {
   console.log(`⏳ Đang kết nối Xiao Zhi cho Bàn ${index + 1}...`);
@@ -387,25 +384,15 @@ function connectXiaoZhi(url, index) {
             return;
           }
 
+          // 🚀 Chỉ cần gọi 1 hàm này là đủ cân cả Socket và MQTT
           const order = await createOrderRecord({
             tableNumber: String(tableNumber),
             items: orderItems,
             note: 'Khách gọi qua AI', 
           });
 
-          // 🚀 2. BẮN TÍN HIỆU SOCKET CHO DASHBOARD QUẢN LÝ (Giúp Dashboard tự hiện đơn không cần F5)
-          io.emit('order:new', order);
-
-          // 3. BẮN TÍN HIỆU MQTT CHO PHẦN CỨNG Ở QUẦY (Đã làm phần cứng reo còi thành công)
-          if (mqttClient && mqttClient.connected) {
-            const espPayload = JSON.stringify({
-              id: order.order_number,
-              table: String(tableNumber),
-              item: orderItems.map(i => `${i.quantity}x ${i.name}`).join(', ')
-            });
-            mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
-            mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 });
-          }
+          // Các đoạn io.emit và mqtt thừa ở đây đã được dọn dẹp sạch sẽ
+          await publishTableNotification(tableNumber, { event: 'voice_order_received', order });
 
           console.log(`✅ Đã đồng bộ thành công cho cả Dashboard và Phần cứng quầy!`);
           
@@ -439,7 +426,6 @@ async function startServer() {
   try {
     await connectDatabase()
     
-    // THÊM CLIENT ID ĐỂ CHỐNG LỖI MQTT BỊ VĂNG (ECONNRESET)
     mqttClient = mqtt.connect(MQTT_BROKER_URL, { 
       clientId: 'coffee-backend-' + Math.random().toString(16).slice(2),
       reconnectPeriod: 5000, 
@@ -452,7 +438,6 @@ async function startServer() {
     server.listen(BACKEND_PORT, () => {
       console.log(`Backend Hub running on http://localhost:${BACKEND_PORT}`)
       
-      // KHỞI ĐỘNG KẾT NỐI XIAO ZHI CHO TOÀN BỘ CÁC BÀN
       XIAO_ZHI_WSS_URLS.forEach((url, index) => {
         if (url && url.includes('token=')) { connectXiaoZhi(url, index) }
       });

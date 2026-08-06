@@ -295,8 +295,9 @@ app.post('/api/order/:orderId/complete', async (req, res) => {
     
     if (tableNumber) {
       await publishTableNotification(tableNumber, { event: 'order_completed', orderId: Number(orderId) })
-      // Gọi còi khi đóng đơn
-      triggerFirebaseBell(tableNumber);
+      
+      // ❌ XÓA HOẶC COMMENT DÒNG NÀY ĐI ĐỂ KHÁCH VỀ ĐÓNG ĐƠN KHÔNG KÊU NỮA
+      // triggerFirebaseBell(tableNumber); 
     }
     res.json({ success: true })
   } catch (error) { res.status(500).json({ error: 'Không thể cập nhật đơn hàng' }) }

@@ -491,7 +491,6 @@ async function startServer() {
           const newStatus = data.status === 'COMPLETED' ? 'ready' : (data.status === 'PREPARING' ? 'preparing' : 'pending');
 
           if (orderIdOrNum) {
-            // Cập nhật Database an toàn (Tránh lỗi so sánh String với cột INT)
             if (String(orderIdOrNum).startsWith('ORD')) {
               await pool.query('UPDATE orders SET status = ? WHERE order_number = ?', [newStatus, orderIdOrNum]);
             } else {
@@ -510,8 +509,9 @@ async function startServer() {
                   order: updatedOrder 
                 });
 
-                // Nếu ESP32 quầy báo pha xong (ready), gọi ngay hàm Firebase gọi còi
-                if (newStatus === 'ready' || newStatus === 'completed') {
+                // 🚀 CHỈ KÍCH HOẠT CÒI KHI TRẠNG THÁI LÀ 'ready' (Sẵn sàng bưng ra bàn)
+                // Bỏ trạng thái 'completed' ở đây đi để tránh kêu lần 2 khi đóng bàn
+                if (newStatus === 'ready') {
                   triggerFirebaseBell(updatedOrder.table_number);
                 }
               }

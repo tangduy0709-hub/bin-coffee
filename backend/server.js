@@ -442,7 +442,7 @@ async function startServer() {
         try {
           const data = JSON.parse(message.toString());
           const orderIdOrNum = data.id;
-          const newStatus = data.status === 'COMPLETED' ? 'completed' : (data.status === 'PREPARING' ? 'preparing' : 'ready');
+          const newStatus = data.status === 'COMPLETED' ? 'ready' : (data.status === 'PREPARING' ? 'preparing' : 'pending');
 
           if (orderIdOrNum) {
             // Cập nhật Database an toàn (Tránh lỗi so sánh String với cột INT)

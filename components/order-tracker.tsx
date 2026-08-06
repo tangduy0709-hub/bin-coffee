@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { useCartStore, type Order } from '@/lib/store'
 import { formatVND } from '@/lib/utils'
 import { useEffect, useState, useRef } from 'react'
+import { io } from 'socket.io-client'
 
 const statusSteps = [
   { status: 'pending', label: 'Đã đặt', icon: CheckCircle2 },
@@ -42,7 +43,42 @@ export function OrderTracker() {
 
   useEffect(() => {
     // Socket.IO đã được loại bỏ để chuyển sang MQTT.
-    // TODO: nếu cần, chuyển phần thông báo đơn của khách hàng sang MQTT tương tự Dashboard.
+    useEffect(() => {
+    if (!currentOrder) return;
+
+    // Kết nối tới con Server Render của bạn
+    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'https://bin-coffee.onrender.com');
+
+    // Lắng nghe sự kiện cập nhật đơn từ Backend
+    socket.on('order:updated', (updatedOrder) => {
+      // Chỉ cập nhật nếu ID đơn hàng khớp với đơn khách đang xem
+      if (updatedOrder && updatedOrder.id === currentOrder.id) {
+        
+        // Cập nhật trạng thái cho thanh tiến trình chạy
+        updateOrderStatus(updatedOrder.status);
+        
+        // Bắn thông báo pop-up góc màn hình & kêu Ting!
+        const statusText = 
+          updatedOrder.status === 'preparing' ? 'Đang được pha chế 👨‍🍳' : 
+          updatedOrder.status === 'ready' ? 'Đã pha xong, mời bạn thưởng thức! ☕' : 
+          updatedOrder.status === 'completed' ? 'Đã hoàn thành' : '';
+
+        if (statusText) {
+          setNotificationMsg({ 
+            title: 'Đơn hàng của bạn đã cập nhật!', 
+            desc: statusText 
+          });
+          setShowNotification(true);
+          playNotificationSound();
+        }
+      }
+    });
+
+    // Cleanup kết nối khi tắt component
+    return () => {
+      socket.disconnect();
+    };
+  }, [currentOrder, updateOrderStatus]);
   }, [currentOrder, updateOrderStatus, setOrder])
 
   if (!currentOrder) return null

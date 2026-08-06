@@ -143,7 +143,6 @@ async function findMenuItemByName(itemName) {
   } catch (error) { return null; }
 }
 
-// 🚀 HÀM TẠO ĐƠN SIÊU CẤP ĐÃ ĐƯỢC CHUẨN HÓA
 async function createOrderRecord({ tableNumber, items, note }) {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`
@@ -160,7 +159,7 @@ async function createOrderRecord({ tableNumber, items, note }) {
     id: orderId, 
     order_number: orderNumber, 
     table_number: tableNumber, 
-    table: tableNumber, // Dự phòng cho Dashboard
+    table: tableNumber, 
     total, 
     status: 'pending', 
     note: note || '', 
@@ -168,11 +167,9 @@ async function createOrderRecord({ tableNumber, items, note }) {
     items 
   };
 
-  // 1. TỰ ĐỘNG BẮN SOCKET CHO DASHBOARD QUẢN LÝ TỪ ĐÂY
   io.emit('order:new', newOrderObj);
   io.emit('order:updated', newOrderObj); 
 
-  // 2. TỰ ĐỘNG BẮN MQTT XUỐNG QUẦY TỪ ĐÂY
   if (mqttClient && mqttClient.connected) {
     const espPayload = JSON.stringify({
       id: orderNumber,
@@ -213,7 +210,6 @@ app.post('/api/order', async (req, res) => {
     const { tableNumber, items, note } = req.body
     if (!tableNumber || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'Bàn và danh sách món là bắt buộc' })
     const order = await createOrderRecord({ tableNumber, items, note })
-    // Dòng io.emit thừa ở đây đã được gỡ bỏ
     await publishTableNotification(tableNumber, { event: 'order_received', order })
     res.status(201).json(order)
   } catch (error) { res.status(500).json({ error: 'Không thể tạo đơn hàng' }) }
@@ -229,9 +225,6 @@ app.get('/api/table-entry', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Lỗi tra cứu cổng vào bàn' }) }
 })
 
-// =========================================================
-// API HOÀN THÀNH ĐƠN (GỌI CÒI + LED BÀN ĐÓ KÊU)
-// =========================================================
 app.post('/api/order/:orderId/complete', async (req, res) => {
   try {
     const { orderId } = req.params
@@ -245,7 +238,6 @@ app.post('/api/order/:orderId/complete', async (req, res) => {
     
     if (tableNumber) {
       await publishTableNotification(tableNumber, { event: 'order_completed', orderId: Number(orderId) })
-      console.log(`🎉 ĐÃ BẤM HOÀN THÀNH! Hệ thống web sẽ tự gọi Firebase để báo CÒI cho Bàn ${tableNumber}!`);
     }
     res.json({ success: true })
   } catch (error) { res.status(500).json({ error: 'Không thể cập nhật đơn hàng' }) }
@@ -260,10 +252,7 @@ const updateStatusHandler = async (req, res) => {
     io.emit('order:updated', order || null);
 
     if (order && order.table_number) {
-      await publishTableNotification(order.table_number, { 
-        event: 'order_updated', 
-        order: order 
-      });
+      await publishTableNotification(order.table_number, { event: 'order_updated', order: order });
     }
 
     res.json({ success: true });
@@ -281,10 +270,7 @@ const updatePaymentHandler = async (req, res) => {
     io.emit('order:updated', order || null);
 
     if (order && order.table_number) {
-      await publishTableNotification(order.table_number, { 
-        event: 'order_updated', 
-        order: order 
-      });
+      await publishTableNotification(order.table_number, { event: 'order_updated', order: order });
     }
 
     res.json({ success: true });
@@ -293,10 +279,6 @@ const updatePaymentHandler = async (req, res) => {
 app.post('/api/order/:id/payment', updatePaymentHandler);
 app.put('/api/order/:id/payment', updatePaymentHandler);
 
-
-// =========================================================
-// HÀM KẾT NỐI XIAO ZHI CHO TỪNG BÀN 
-// =========================================================
 function connectXiaoZhi(url, index) {
   console.log(`⏳ Đang kết nối Xiao Zhi cho Bàn ${index + 1}...`);
   const ws = new WebSocket(url);
@@ -384,16 +366,13 @@ function connectXiaoZhi(url, index) {
             return;
           }
 
-          // 🚀 Chỉ cần gọi 1 hàm này là đủ cân cả Socket và MQTT
           const order = await createOrderRecord({
             tableNumber: String(tableNumber),
             items: orderItems,
             note: 'Khách gọi qua AI', 
           });
 
-          // Các đoạn io.emit và mqtt thừa ở đây đã được dọn dẹp sạch sẽ
           await publishTableNotification(tableNumber, { event: 'voice_order_received', order });
-
           console.log(`✅ Đã đồng bộ thành công cho cả Dashboard và Phần cứng quầy!`);
           
           ws.send(JSON.stringify({
@@ -432,8 +411,53 @@ async function startServer() {
       connectTimeout: 30000 
     })
     
-    mqttClient.on('connect', () => { console.log('MQTT connected successfully!') })
+    mqttClient.on('connect', () => { 
+      console.log('MQTT connected successfully!')
+      // 🚀 Đăng ký lắng nghe tín hiệu bấm nút từ ESP32 ở quầy
+      mqttClient.subscribe('cafe/dashboard/status', (err) => {
+        if (!err) console.log('Đã subscribe thành công kênh cafe/dashboard/status');
+      });
+    })
+
     mqttClient.on('error', (error) => { console.warn('MQTT error:', error.message) })
+
+    // 🚀 Lắng nghe trạng thái khi phần cứng ESP32 gửi lên
+    mqttClient.on('message', async (topic, message) => {
+      if (topic === 'cafe/dashboard/status') {
+        try {
+          const data = JSON.parse(message.toString());
+          const orderIdOrNum = data.id;
+          const newStatus = data.status === 'COMPLETED' ? 'completed' : (data.status === 'PREPARING' ? 'preparing' : 'ready');
+
+          if (orderIdOrNum) {
+            // Cập nhật Database
+            await pool.query(
+              'UPDATE orders SET status = ? WHERE id = ? OR order_number = ?', 
+              [newStatus, orderIdOrNum, orderIdOrNum]
+            );
+
+            const ordersList = await fetchOrders();
+            const updatedOrder = ordersList.find(o => String(o.id) === String(orderIdOrNum) || o.order_number === orderIdOrNum);
+
+            if (updatedOrder) {
+              // Bắn Socket cho Dashboard quản lý
+              io.emit('order:updated', updatedOrder);
+
+              // Bắn MQTT thông báo riêng cho Web của Bàn khách
+              if (updatedOrder.table_number) {
+                await publishTableNotification(updatedOrder.table_number, { 
+                  event: 'order_updated', 
+                  order: updatedOrder 
+                });
+              }
+              console.log(`✅ Đồng bộ từ phần cứng quầy: Đơn ${orderIdOrNum} chuyển thành "${newStatus}"`);
+            }
+          }
+        } catch (e) {
+          console.error('Lỗi xử lý tin nhắn MQTT từ ESP32:', e.message);
+        }
+      }
+    });
 
     server.listen(BACKEND_PORT, () => {
       console.log(`Backend Hub running on http://localhost:${BACKEND_PORT}`)

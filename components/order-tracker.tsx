@@ -7,8 +7,7 @@ import {
   Coffee,
   Bell,
   X,
-  ChefHat,
-  Volume2
+  ChefHat
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore, type Order } from '@/lib/store'
@@ -23,7 +22,7 @@ const statusSteps = [
 ]
 
 export function OrderTracker() {
-  const { currentOrder, updateOrderStatus, setOrder } = useCartStore()
+  const { currentOrder, updateOrderStatus } = useCartStore()
   const [showNotification, setShowNotification] = useState(false)
   const [notificationMsg, setNotificationMsg] = useState({ title: '', desc: '' })
   const [isExpanded, setIsExpanded] = useState(true)
@@ -41,41 +40,39 @@ export function OrderTracker() {
     }
   }
 
+  // Lắng nghe socket an toàn, dùng ref để tránh gọi state gây lỗi vòng lặp
   useEffect(() => {
-    // Socket.IO đã được loại bỏ để chuyển sang MQTT.
-    useEffect(() => {
-    if (!currentOrder) return;
+    if (!currentOrder?.id) return
 
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'https://bin-coffee.onrender.com');
+    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://bin-coffee.onrender.com'
+    const socket = io(socketUrl)
 
     socket.on('order:updated', (updatedOrder) => {
-      if (updatedOrder && updatedOrder.id === currentOrder.id) {
-        // Chỉ cập nhật trạng thái nếu có sự thay đổi thực sự
+      if (updatedOrder && Number(updatedOrder.id) === Number(currentOrder.id)) {
         if (updatedOrder.status !== currentOrder.status) {
-          updateOrderStatus(updatedOrder.status);
+          updateOrderStatus(updatedOrder.status)
           
           const statusText = 
             updatedOrder.status === 'preparing' ? 'Đang được pha chế 👨‍🍳' : 
             updatedOrder.status === 'ready' ? 'Đã pha xong, mời bạn thưởng thức! ☕' : 
-            updatedOrder.status === 'completed' ? 'Đã hoàn thành' : '';
+            updatedOrder.status === 'completed' ? 'Đã hoàn thành' : ''
 
           if (statusText) {
             setNotificationMsg({ 
               title: 'Đơn hàng đã cập nhật!', 
               desc: statusText 
-            });
-            setShowNotification(true);
-            playNotificationSound();
+            })
+            setShowNotification(true)
+            playNotificationSound()
           }
         }
       }
-    });
+    })
 
     return () => {
-      socket.disconnect();
-    };
-  }, [currentOrder?.id, currentOrder?.status]); // Chỉ theo dõi id và status để tránh vòng lặp
-  }, [currentOrder, updateOrderStatus, setOrder])
+      socket.disconnect()
+    }
+  }, [currentOrder?.id, currentOrder?.status, updateOrderStatus])
 
   if (!currentOrder) return null
 
@@ -140,9 +137,7 @@ export function OrderTracker() {
                 Đơn {currentOrder.id}
               </h3>
               <p className="text-sm text-muted-foreground">
-                {currentOrder.status === 'ready'
-                  ? 'Đã sẵn sàng!'
-                  : `Đang xử lý`}
+                {currentOrder.status === 'ready' ? 'Đã sẵn sàng!' : 'Đang xử lý'}
               </p>
             </div>
           </div>
@@ -178,18 +173,16 @@ export function OrderTracker() {
                         >
                           <Icon className="h-5 w-5" />
                           {isCurrent && (
-                                <motion.div
-                                  animate={{ scale: [1, 1.2, 1] }}
-                                  transition={{ repeat: Infinity, duration: 2 }}
-                                  className="absolute inset-0 rounded-full border-2 border-primary"
-                                />
+                            <motion.div
+                              animate={{ scale: [1, 1.2, 1] }}
+                              transition={{ repeat: Infinity, duration: 2 }}
+                              className="absolute inset-0 rounded-full border-2 border-primary"
+                            />
                           )}
                         </div>
                         <span
                           className={`mt-2 text-xs ${
-                            isActive
-                              ? 'font-medium text-foreground'
-                              : 'text-muted-foreground'
+                            isActive ? 'font-medium text-foreground' : 'text-muted-foreground'
                           }`}
                         >
                           {step.label}

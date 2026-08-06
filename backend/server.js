@@ -43,7 +43,7 @@ function boDauTiengViet(str) {
 }
 
 // =========================================================
-// 🚀 HÀM GỌI CÒI FIREBASE DÙNG CHUNG
+// 🚀 HÀM GỌI CÒI FIREBASE DÙNG CHUNG (CHỈ KHI PHA XONG - READY)
 // =========================================================
 function triggerFirebaseBell(tableNumber) {
   try {
@@ -224,7 +224,6 @@ async function createOrderRecord({ tableNumber, items, note }) {
   io.emit('order:updated', newOrderObj); 
 
   if (mqttClient && mqttClient.connected) {
-    // 🚀 KHỬ DẤU TRƯỚC KHI BẮN QUA MQTT CHO MẠCH QUẦY ESP32
     const chuoiMonAn = items.map(i => `${i.quantity}x ${i.name}`).join(', ');
     const chuoiKhongDau = boDauTiengViet(chuoiMonAn);
 
@@ -295,9 +294,7 @@ app.post('/api/order/:orderId/complete', async (req, res) => {
     
     if (tableNumber) {
       await publishTableNotification(tableNumber, { event: 'order_completed', orderId: Number(orderId) })
-      
-      // ❌ XÓA HOẶC COMMENT DÒNG NÀY ĐI ĐỂ KHÁCH VỀ ĐÓNG ĐƠN KHÔNG KÊU NỮA
-      // triggerFirebaseBell(tableNumber); 
+      // ❌ ĐÃ XÓA triggerFirebaseBell Ở ĐÂY ĐỂ ĐÓNG BÀN KHÔNG BAO GIỜ KÊU CÒI NỮA
     }
     res.json({ success: true })
   } catch (error) { res.status(500).json({ error: 'Không thể cập nhật đơn hàng' }) }
@@ -313,8 +310,8 @@ const updateStatusHandler = async (req, res) => {
 
     if (order && order.table_number) {
       await publishTableNotification(order.table_number, { event: 'order_updated', order: order });
-      // Gọi còi nếu nhân viên bấm trạng thái "ready" hoặc "completed" trên Web Dashboard
-      if (status === 'ready' || status === 'completed') {
+      // CHỈ GỌI CÒI NẾU TRẠNG THÁI LÀ READY
+      if (status === 'ready') {
         triggerFirebaseBell(order.table_number);
       }
     }
@@ -510,8 +507,7 @@ async function startServer() {
                   order: updatedOrder 
                 });
 
-                // 🚀 CHỈ KÍCH HOẠT CÒI KHI TRẠNG THÁI LÀ 'ready' (Sẵn sàng bưng ra bàn)
-                // Bỏ trạng thái 'completed' ở đây đi để tránh kêu lần 2 khi đóng bàn
+                // 🚀 CHỈ GỌI FIREBASE KHI TRẠNG THÁI LÀ 'ready' (PHA XONG)
                 if (newStatus === 'ready') {
                   triggerFirebaseBell(updatedOrder.table_number);
                 }

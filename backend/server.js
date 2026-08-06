@@ -42,6 +42,46 @@ function boDauTiengViet(str) {
     .replace(/Đ/g, "D");
 }
 
+// =========================================================
+// 🚀 HÀM GỌI CÒI FIREBASE DÙNG CHUNG
+// =========================================================
+function triggerFirebaseBell(tableNumber) {
+  try {
+    const matchSoBan = String(tableNumber).match(/\d+/);
+    const soBanFirebase = matchSoBan ? matchSoBan[0] : "1";
+    
+    const payloadData = JSON.stringify({
+      ban: soBanFirebase,
+      trang_thai: "READY",
+      thoi_gian: Date.now()
+    });
+
+    const options = {
+      hostname: 'cafe-thong-bao-default-rtdb.firebaseio.com',
+      port: 443,
+      path: '/thong_bao.json',
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payloadData)
+      }
+    };
+
+    const reqData = https.request(options, (resFirebase) => {
+      console.log(`🔥 Đã bắn tín hiệu Firebase gọi còi Bàn ${soBanFirebase} (Mã trạng thái: ${resFirebase.statusCode})`);
+    });
+
+    reqData.on('error', (e) => {
+      console.error(`Lỗi kết nối Firebase từ backend: ${e.message}`);
+    });
+
+    reqData.write(payloadData);
+    reqData.end();
+  } catch (err) {
+    console.error('Lỗi gọi Firebase từ backend:', err.message);
+  }
+}
+
 async function connectDatabase() {
   const maxAttempts = 5
   const connectionString = process.env.DATABASE_URL;
@@ -191,7 +231,7 @@ async function createOrderRecord({ tableNumber, items, note }) {
     const espPayload = JSON.stringify({
       id: orderNumber,
       table: String(tableNumber),
-      item: chuoiKhongDau // <--- Mạch ESP32 sẽ nhận "Ca Phe Da" thay vì "Cà Phê Đá"
+      item: chuoiKhongDau
     });
     
     mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
@@ -255,6 +295,8 @@ app.post('/api/order/:orderId/complete', async (req, res) => {
     
     if (tableNumber) {
       await publishTableNotification(tableNumber, { event: 'order_completed', orderId: Number(orderId) })
+      // Gọi còi khi đóng đơn
+      triggerFirebaseBell(tableNumber);
     }
     res.json({ success: true })
   } catch (error) { res.status(500).json({ error: 'Không thể cập nhật đơn hàng' }) }
@@ -270,6 +312,10 @@ const updateStatusHandler = async (req, res) => {
 
     if (order && order.table_number) {
       await publishTableNotification(order.table_number, { event: 'order_updated', order: order });
+      // Gọi còi nếu nhân viên bấm trạng thái "ready" hoặc "completed" trên Web Dashboard
+      if (status === 'ready' || status === 'completed') {
+        triggerFirebaseBell(order.table_number);
+      }
     }
 
     res.json({ success: true });
@@ -464,37 +510,9 @@ async function startServer() {
                   order: updatedOrder 
                 });
 
-                if (newStatus === 'completed' || newStatus === 'ready') {
-                  const matchSoBan = String(updatedOrder.table_number).match(/\d+/);
-                  const soBanFirebase = matchSoBan ? matchSoBan[0] : "1";
-                  
-                  const payloadData = JSON.stringify({
-                    ban: soBanFirebase,
-                    trang_thai: "READY",
-                    thoi_gian: Date.now()
-                  });
-
-                  const options = {
-                    hostname: 'cafe-thong-bao-default-rtdb.firebaseio.com',
-                    port: 443,
-                    path: '/thong_bao.json',
-                    method: 'PUT',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Content-Length': Buffer.byteLength(payloadData)
-                    }
-                  };
-
-                  const reqData = https.request(options, (resFirebase) => {
-                    console.log(`🔥 Đã bắn tín hiệu Firebase gọi còi Bàn ${soBanFirebase} (Mã trạng thái: ${resFirebase.statusCode})`);
-                  });
-
-                  reqData.on('error', (e) => {
-                    console.error(`Lỗi kết nối Firebase từ backend: ${e.message}`);
-                  });
-
-                  reqData.write(payloadData);
-                  reqData.end();
+                // Nếu ESP32 quầy báo pha xong (ready), gọi ngay hàm Firebase gọi còi
+                if (newStatus === 'ready' || newStatus === 'completed') {
+                  triggerFirebaseBell(updatedOrder.table_number);
                 }
               }
               console.log(`✅ Đồng bộ từ phần cứng quầy: Đơn ${orderIdOrNum} chuyển thành "${newStatus}"`);

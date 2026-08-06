@@ -229,6 +229,15 @@ const updateStatusHandler = async (req, res) => {
     const updatedOrder = await fetchOrders();
     const order = updatedOrder.find((o) => o.id === Number(id));
     io.emit('order:updated', order || null);
+
+    // 🚀 BỔ SUNG: Bắn thông báo qua MQTT để web khách hàng tự động cập nhật!
+    if (order && order.table_number) {
+      await publishTableNotification(order.table_number, { 
+        event: 'order_updated', 
+        order: order 
+      });
+    }
+
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Lỗi' }); }
 };
@@ -242,6 +251,15 @@ const updatePaymentHandler = async (req, res) => {
     const updatedOrder = await fetchOrders();
     const order = updatedOrder.find((o) => o.id === Number(id));
     io.emit('order:updated', order || null);
+
+    // 🚀 BỔ SUNG TƯƠNG TỰ CHO THANH TOÁN
+    if (order && order.table_number) {
+      await publishTableNotification(order.table_number, { 
+        event: 'order_updated', 
+        order: order 
+      });
+    }
+
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Lỗi' }); }
 };

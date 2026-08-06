@@ -445,10 +445,12 @@ async function startServer() {
           const newStatus = data.status === 'COMPLETED' ? 'completed' : (data.status === 'PREPARING' ? 'preparing' : 'ready');
 
           if (orderIdOrNum) {
-            await pool.query(
-              'UPDATE orders SET status = ? WHERE id = ? OR order_number = ?', 
-              [newStatus, orderIdOrNum, orderIdOrNum]
-            );
+            // Cập nhật Database an toàn (Tránh lỗi so sánh String với cột INT)
+            if (String(orderIdOrNum).startsWith('ORD')) {
+              await pool.query('UPDATE orders SET status = ? WHERE order_number = ?', [newStatus, orderIdOrNum]);
+            } else {
+              await pool.query('UPDATE orders SET status = ? WHERE id = ?', [newStatus, orderIdOrNum]);
+            }
 
             const ordersList = await fetchOrders();
             const updatedOrder = ordersList.find(o => String(o.id) === String(orderIdOrNum) || o.order_number === orderIdOrNum);

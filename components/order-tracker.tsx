@@ -1,19 +1,13 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import {
-  Clock,
-  CheckCircle2,
-  Coffee,
-  Bell,
-  X,
-  ChefHat
-} from 'lucide-react'
+import { Clock, CheckCircle2, Coffee, Bell, X, ChefHat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore, type Order } from '@/lib/store'
 import { formatVND } from '@/lib/utils'
 import { useEffect, useState, useRef } from 'react'
 import { io } from 'socket.io-client'
+import { BACKEND_URL } from '@/lib/backend' // 🚀 DÙNG CHUNG KÊNH VỚI DASHBOARD
 
 const statusSteps = [
   { status: 'pending', label: 'Đã đặt', icon: CheckCircle2 },
@@ -22,16 +16,15 @@ const statusSteps = [
 ]
 
 export function OrderTracker() {
-  // 🚀 Lấy thêm hàm setOrder để đẩy đơn AI vào máy khách
   const { currentOrder, updateOrderStatus, setOrder } = useCartStore()
   const [showNotification, setShowNotification] = useState(false)
   const [notificationMsg, setNotificationMsg] = useState({ title: '', desc: '' })
   const [isExpanded, setIsExpanded] = useState(true)
   
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  
+  // 🚀 Dùng ref để lưu state, giúp Socket không bị ngắt kết nối liên tục khi React render lại
   const currentOrderRef = useRef(currentOrder)
-
-  // Lưu trữ state mới nhất vào ref để tránh lỗi vòng lặp Socket
   useEffect(() => {
     currentOrderRef.current = currentOrder
   }, [currentOrder])
@@ -47,30 +40,36 @@ export function OrderTracker() {
     }
   }
 
-  // Lắng nghe socket an toàn
+  // Lắng nghe socket 24/7 (KHÔNG phụ thuộc vào việc có đơn hay chưa)
   useEffect(() => {
-    const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://bin-coffee.onrender.com'
-    const socket = io(socketUrl)
+    const socket = io(BACKEND_URL)
 
-    // 🚀 Lấy số bàn từ URL (Khách đang ở link /table/2 sẽ lấy ra số 2)
-    const pathParts = window.location.pathname.split('/')
+    // Trích xuất số bàn từ URL (VD: /table/2 -> Lấy số 2)
+    const pathParts = window.location.pathname.split('/').filter(Boolean)
     const currentTable = pathParts[pathParts.length - 1]
 
-    // 1. KHI AI HOẶC NHÂN VIÊN TẠO ĐƠN MỚI
+    socket.on('connect', () => {
+      console.log(`✅ Khách hàng kết nối Socket thành công! Đang "hóng" đơn cho Bàn số: ${currentTable}`);
+    })
+
+    // 1. KHI CÓ ĐƠN MỚI TỪ AI HOẶC DASHBOARD
     socket.on('order:new', (newOrder) => {
-      // Chỉ hiện pop-up nếu đơn này đúng là của bàn khách đang ngồi
+      console.log('📥 Phát hiện tín hiệu đơn mới:', newOrder);
+      
+      // Khớp đúng bàn đang ngồi mới đẩy vào màn hình
       if (newOrder && String(newOrder.table_number) === String(currentTable)) {
-        setOrder(newOrder) // Tự động load đơn vào màn hình khách!
+        console.log('🎉 Đơn của đúng bàn này! Đang cập nhật giao diện...');
+        setOrder(newOrder); 
         setNotificationMsg({ 
           title: 'AI đã lên đơn cho bạn!', 
           desc: `Gồm ${newOrder.items?.length || 0} món. Quán đang chuẩn bị 👨‍🍳` 
-        })
-        setShowNotification(true)
-        playNotificationSound()
+        });
+        setShowNotification(true);
+        playNotificationSound();
       }
     })
 
-    // 2. KHI ĐƠN HÀNG ĐƯỢC CẬP NHẬT TRẠNG THÁI TỪ BẾP
+    // 2. KHI ĐƠN BỊ BẾP ĐỔI TRẠNG THÁI (Pha chế, Xong...)
     socket.on('order:updated', (updatedOrder) => {
       const latestOrder = currentOrderRef.current
       if (latestOrder && updatedOrder && Number(updatedOrder.id) === Number(latestOrder.id)) {
@@ -83,10 +82,7 @@ export function OrderTracker() {
             updatedOrder.status === 'completed' ? 'Đã hoàn thành' : ''
 
           if (statusText) {
-            setNotificationMsg({ 
-              title: 'Đơn hàng đã cập nhật!', 
-              desc: statusText 
-            })
+            setNotificationMsg({ title: 'Đơn hàng đã cập nhật!', desc: statusText })
             setShowNotification(true)
             playNotificationSound()
           }
@@ -97,43 +93,27 @@ export function OrderTracker() {
     return () => {
       socket.disconnect()
     }
-  }, [setOrder, updateOrderStatus])
+  }, [setOrder, updateOrderStatus]) // Socket kết nối 1 lần duy nhất
 
-  // Nếu không có đơn thì ẩn giao diện này đi (Nhưng code socket bên trên vẫn chạy ngầm để nghe ngóng)
+  // HIỂN THỊ GIAO DIỆN (Nếu chưa có đơn thì ẨN UI, nhưng Hook Socket ở trên VẪN CHẠY NGẦM)
   if (!currentOrder) return null
 
-  const currentStepIndex = statusSteps.findIndex(
-    (step) => step.status === currentOrder.status
-  )
+  const currentStepIndex = statusSteps.findIndex(step => step.status === currentOrder.status)
 
   return (
     <>
       <AnimatePresence>
         {showNotification && (
-          <motion.div
-            initial={{ opacity: 0, y: -50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            className="fixed left-4 right-4 top-20 z-50 rounded-2xl bg-accent p-4 shadow-lg"
-          >
+          <motion.div initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -50 }} className="fixed left-4 right-4 top-20 z-50 rounded-2xl bg-accent p-4 shadow-lg">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-foreground/10">
                 <Bell className="h-5 w-5 text-accent-foreground" />
               </div>
               <div className="flex-1">
-                <h4 className="font-semibold text-accent-foreground">
-                  {notificationMsg.title}
-                </h4>
-                <p className="text-sm text-accent-foreground/80">
-                  {notificationMsg.desc}
-                </p>
+                <h4 className="font-semibold text-accent-foreground">{notificationMsg.title}</h4>
+                <p className="text-sm text-accent-foreground/80">{notificationMsg.desc}</p>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowNotification(false)}
-                className="text-accent-foreground"
-              >
+              <Button variant="ghost" size="icon" onClick={() => setShowNotification(false)} className="text-accent-foreground">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -141,33 +121,17 @@ export function OrderTracker() {
         )}
       </AnimatePresence>
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mx-4 mb-4 overflow-hidden rounded-2xl bg-card shadow-md"
-      >
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex w-full items-center justify-between p-4"
-        >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mb-4 overflow-hidden rounded-2xl bg-card shadow-md">
+        <button onClick={() => setIsExpanded(!isExpanded)} className="flex w-full items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              {currentOrder.status === 'ready' ? (
-                <Coffee className="h-5 w-5 text-primary" />
-              ) : (
-                <Clock className="h-5 w-5 text-primary" />
-              )}
+              {currentOrder.status === 'ready' ? <Coffee className="h-5 w-5 text-primary" /> : <Clock className="h-5 w-5 text-primary" />}
             </div>
             <div className="text-left">
-              <h3 className="font-semibold text-card-foreground">
-                Đơn {currentOrder.id}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {currentOrder.status === 'ready' ? 'Đã sẵn sàng!' : 'Đang xử lý'}
-              </p>
+              <h3 className="font-semibold text-card-foreground">Đơn {currentOrder.order_number || currentOrder.id}</h3>
+              <p className="text-sm text-muted-foreground">{currentOrder.status === 'ready' ? 'Đã sẵn sàng!' : 'Đang xử lý'}</p>
             </div>
           </div>
-
           <div className="flex items-center gap-2">
             <StatusBadge status={currentOrder.status} />
           </div>
@@ -175,71 +139,36 @@ export function OrderTracker() {
 
         <AnimatePresence>
           {isExpanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden"
-            >
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
               <div className="border-t border-border px-4 py-4">
                 <div className="mb-4 flex justify-between">
                   {statusSteps.map((step, index) => {
                     const Icon = step.icon
                     const isActive = index <= currentStepIndex
                     const isCurrent = index === currentStepIndex
-
                     return (
                       <div key={step.status} className="flex flex-col items-center">
-                        <div
-                          className={`relative flex h-10 w-10 items-center justify-center rounded-full transition-colors ${
-                            isActive
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted text-muted-foreground'
-                          }`}
-                        >
+                        <div className={`relative flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
                           <Icon className="h-5 w-5" />
-                          {isCurrent && (
-                            <motion.div
-                              animate={{ scale: [1, 1.2, 1] }}
-                              transition={{ repeat: Infinity, duration: 2 }}
-                              className="absolute inset-0 rounded-full border-2 border-primary"
-                            />
-                          )}
+                          {isCurrent && <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 rounded-full border-2 border-primary" />}
                         </div>
-                        <span
-                          className={`mt-2 text-xs ${
-                            isActive ? 'font-medium text-foreground' : 'text-muted-foreground'
-                          }`}
-                        >
-                          {step.label}
-                        </span>
+                        <span className={`mt-2 text-xs ${isActive ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>{step.label}</span>
                       </div>
                     )
                   })}
                 </div>
 
                 <div className="rounded-xl bg-muted/50 p-3">
-                  <h4 className="mb-2 text-sm font-medium text-card-foreground">
-                    Tóm tắt đơn hàng
-                  </h4>
+                  <h4 className="mb-2 text-sm font-medium text-card-foreground">Tóm tắt đơn hàng</h4>
                   {currentOrder.items.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between py-1 text-sm"
-                    >
-                      <span className="text-muted-foreground">
-                        {item.quantity}x {item.name}
-                      </span>
-                      <span className="text-card-foreground">
-                        {formatVND(item.price * item.quantity)}
-                      </span>
+                    <div key={item.id} className="flex items-center justify-between py-1 text-sm">
+                      <span className="text-muted-foreground">{item.quantity}x {item.name}</span>
+                      <span className="text-card-foreground">{formatVND(item.price * item.quantity)}</span>
                     </div>
                   ))}
                   <div className="mt-2 flex items-center justify-between border-t border-border pt-2 font-medium">
                     <span className="text-card-foreground">Tổng cộng</span>
-                    <span className="text-primary">
-                      {formatVND(currentOrder.total)}
-                    </span>
+                    <span className="text-primary">{formatVND(currentOrder.total)}</span>
                   </div>
                 </div>
               </div>
@@ -252,23 +181,9 @@ export function OrderTracker() {
 }
 
 function StatusBadge({ status }: { status: Order['status'] }) {
-  const styles = {
-    pending: 'bg-secondary text-secondary-foreground',
-    preparing: 'bg-accent/20 text-accent',
-    ready: 'bg-primary/20 text-primary',
-    completed: 'bg-muted text-muted-foreground',
-  }
-
-  const labels = {
-    pending: 'Chờ nhận',
-    preparing: 'Đang pha chế',
-    ready: 'Xong',
-    completed: 'Hoàn thành',
-  }
-
+  const styles = { pending: 'bg-secondary text-secondary-foreground', preparing: 'bg-accent/20 text-accent', ready: 'bg-primary/20 text-primary', completed: 'bg-muted text-muted-foreground' }
+  const labels = { pending: 'Chờ nhận', preparing: 'Đang pha chế', ready: 'Xong', completed: 'Hoàn thành' }
   return (
-    <span className={`rounded-full px-3 py-1 text-xs font-medium ${styles[status]}`}>
-      {labels[status]}
-    </span>
+    <span className={`rounded-full px-3 py-1 text-xs font-medium ${styles[status]}`}>{labels[status]}</span>
   )
 }

@@ -152,11 +152,41 @@ async function findMenuItemByName(itemName) {
 async function createOrderRecord({ tableNumber, items, note }) {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`
-  const [result] = await pool.query(`INSERT INTO orders (order_number, table_number, total, status, note) VALUES (?, ?, ?, 'pending', ?)`, [orderNumber, tableNumber, total, note || ''])
+  
+  const [result] = await pool.query(
+    `INSERT INTO orders (order_number, table_number, total, status, note) VALUES (?, ?, ?, 'pending', ?)`, 
+    [orderNumber, tableNumber, total, note || '']
+  )
   const orderId = result.insertId
   const details = items.map((item) => [orderId, item.id, item.name, item.quantity, item.price])
   await pool.query(`INSERT INTO order_details (order_id, menu_item_id, menu_item_name, quantity, price) VALUES ?`, [details])
-  return { id: orderId, order_number: orderNumber, table_number: tableNumber, total, status: 'pending', note: note || '', created_at: new Date(), items }
+
+  const newOrderObj = { 
+    id: orderId, 
+    order_number: orderNumber, 
+    table_number: tableNumber, 
+    total, 
+    status: 'pending', 
+    note: note || '', 
+    created_at: new Date(), 
+    items 
+  };
+
+  // 🚀 TỰ ĐỘNG BẮN MQTT XUỐNG QUẦY MỖI KHI CÓ ĐƠN MỚI
+  if (mqttClient && mqttClient.connected) {
+    const espPayload = JSON.stringify({
+      id: orderNumber,
+      table: String(tableNumber),
+      item: items.map(i => `${i.quantity}x ${i.name}`).join(', ')
+    });
+    
+    // Bắn vào cả 2 kênh phổ biến để chắc chắn phần cứng ESP32 ở quầy nhận được sóng
+    mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
+    mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 });
+    console.log(`🔊 Đã phát còi MQTT xuống quầy cho đơn: ${orderNumber}`);
+  }
+
+  return newOrderObj;
 }
 
 async function fetchOrders() {

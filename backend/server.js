@@ -363,10 +363,18 @@ function connectXiaoZhi(url, index) {
             note: 'Khách gọi qua AI', 
           });
 
+          // 1. Bắn qua Socket để Dashboard quản lý tự động nhảy đơn ngay lập tức
           io.emit('order:new', order);
-          await publishTableNotification(tableNumber, { event: 'voice_order_received', order });
 
-          console.log(`✅ Đã tạo đơn nhiều món cho Bàn ${tableNumber} thành công!`);
+          // 2. BỔ SUNG: Bắn tín hiệu qua MQTT để phần cứng ở quầy nhận được đơn
+          await publishTableNotification(tableNumber, { event: 'voice_order_received', order });
+          
+          // Gửi thêm một lệnh tổng cho quầy (nếu phần cứng quầy của bạn đang lắng nghe kênh chung)
+          if (mqttClient && mqttClient.connected) {
+            mqttClient.publish('coffee/kitchen/new-order', JSON.stringify(order), { qos: 0 });
+          }
+
+          console.log(`✅ Đã tạo đơn AI cho Bàn ${tableNumber} và báo phần cứng thành công!`);
           
           ws.send(JSON.stringify({
             jsonrpc: "2.0", 

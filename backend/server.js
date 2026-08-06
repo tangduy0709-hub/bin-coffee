@@ -449,6 +449,29 @@ async function startServer() {
                   event: 'order_updated', 
                   order: updatedOrder 
                 });
+
+                // =========================================================
+                // 🚀 GỌI FIREBASE ĐỂ BÁO CÒI/LED CHO BÀN KHÁCH HÀNG KHI XONG
+                // =========================================================
+                if (newStatus === 'completed' || newStatus === 'ready') {
+                  try {
+                    const matchSoBan = String(updatedOrder.table_number).match(/\d+/);
+                    const soBanFirebase = matchSoBan ? matchSoBan[0] : "1";
+                    
+                    await fetch("https://cafe-thong-bao-default-rtdb.firebaseio.com/thong_bao.json", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        ban: soBanFirebase,
+                        trang_thai: "READY",
+                        thoi_gian: Date.now()
+                      })
+                    });
+                    console.log(`🔥 Đã bắn tín hiệu Firebase gọi còi cho mạch cứng Bàn ${soBanFirebase}!`);
+                  } catch (err) {
+                    console.error('Lỗi gọi Firebase từ backend:', err.message);
+                  }
+                }
               }
               console.log(`✅ Đồng bộ từ phần cứng quầy: Đơn ${orderIdOrNum} chuyển thành "${newStatus}"`);
             }

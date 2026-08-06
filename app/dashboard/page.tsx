@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import toast, { Toaster } from 'react-hot-toast';
 import client from '@/lib/mqttClient'
+import { io } from 'socket.io-client' // 🚀 THÊM SOCKET.IO ĐỂ ĐỒNG BỘ REALTIME
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { LayoutDashboard, History, LayoutGrid, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -60,7 +61,6 @@ export default function DashboardPage() {
   const [orders, setOrders] = useState<KitchenOrder[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [mqttConnected, setMqttConnected] = useState(false)
-  const [soDonChoLam, setSoDonChoLam] = useState(0)
   
   const [activeTab, setActiveTab] = useState<'orders' | 'statistics' | 'tables'>('orders');
   const [selectedDate, setSelectedDate] = useState<string>("");
@@ -71,16 +71,13 @@ export default function DashboardPage() {
     setSelectedDate(getSafeDateString(new Date()));
   }, []);
 
-  // HÀM GỌI FIREBASE KÍCH HOẠT CÒI ESP32 (Đã nâng cấp báo lỗi)
   const handleGoiKhach = async (soBan: string) => {
     const FIREBASE_URL = "https://cafe-thong-bao-default-rtdb.firebaseio.com/thong_bao.json";
   
     try {
       const response = await fetch(FIREBASE_URL, {
         method: "PUT", 
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ban: soBan,
           trang_thai: "READY",
@@ -88,10 +85,8 @@ export default function DashboardPage() {
         }),
       });
   
-      if (response.ok) {
-        toast.success(`📶 Đã bắn tín hiệu gọi còi Bàn ${soBan} lên Firebase!`);
-      } else {
-        // NẾU FIREBASE CHẶN, NÓ SẼ HIỆN LỖI ĐỎ LÊN MÀN HÌNH WEB
+      if (response.ok) toast.success(`📶 Đã bắn tín hiệu gọi còi Bàn ${soBan} lên Firebase!`);
+      else {
         const errText = await response.text();
         toast.error(`❌ Firebase chặn kết nối: Lỗi ${response.status} - ${errText}`, { duration: 6000 });
       }
@@ -105,7 +100,6 @@ export default function DashboardPage() {
     [orders]
   )
 
-  // HIỂN THỊ TẤT CẢ CÁC ĐƠN TRONG NGÀY (Bao gồm cả đơn đã completed để không bị biến mất khỏi màn hình)
   const activeKitchenOrders = useMemo(() => {
     const todayStr = getSafeDateString(new Date());
     return sortedOrders.filter(o => getSafeDateString(o.created_at) === todayStr);
@@ -117,9 +111,7 @@ export default function DashboardPage() {
     const totalOrdersToday = ordersToday.length;
     
     const revenueToday = ordersToday.reduce((sum, order) => {
-      if (order.status === 'completed') {
-        return sum + (Number(order.total) || 0);
-      }
+      if (order.status === 'completed') return sum + (Number(order.total) || 0);
       return sum;
     }, 0);
     const pendingCount = orders.filter((order) => order.status === 'pending' || order.status === 'preparing').length;
@@ -153,27 +145,26 @@ export default function DashboardPage() {
     return orders.filter(order => getSafeDateString(order.created_at) === selectedDate);
   }, [orders, selectedDate]);
 
-  // ====================== LOGIC QUẢN LÝ BÀN ======================
   const TOTAL_TABLES = 3; 
   
   const tableStatus = useMemo(() => {
     const newTableStatus = Array.from({ length: TOTAL_TABLES }, (_, i) => {
       const tableNum = String(i + 1);
       
-      const activeOrders = orders.filter((o) => {
+      const tableOrders = orders.filter((o) => {
         const rawTable = String(o.table_number || "").trim();
         const matches = rawTable.match(/\d+/);
         const dbTableNum = matches ? matches[0] : "1"; 
         return dbTableNum === tableNum && o.status !== 'completed';
       });
 
-      const isOccupied = activeOrders.length > 0;
-      const hasUnpaid = activeOrders.some(o => o.payment_status !== 'paid');
-      const totalUnpaid = activeOrders
+      const isOccupied = tableOrders.length > 0;
+      const hasUnpaid = tableOrders.some(o => o.payment_status !== 'paid');
+      const totalUnpaid = tableOrders
         .filter(o => o.payment_status !== 'paid')
         .reduce((sum, o) => sum + Number(o.total), 0);
 
-      return { tableNum, isOccupied, hasUnpaid, totalUnpaid, activeOrders };
+      return { tableNum, isOccupied, hasUnpaid, totalUnpaid, activeOrders: tableOrders };
     });
 
     if (selectedTableDetails) {
@@ -186,89 +177,35 @@ export default function DashboardPage() {
     return newTableStatus;
   }, [orders, selectedTableDetails]);
 
-  // ===============================================================
-
+  // ====================== EFFECT LẮNG NGHE ESP32 (MQTT) ======================
   useEffect(() => {
     const handleMqttMessage = (topic: string, message: Buffer) => {
       try {
         const data = JSON.parse(message.toString());
-
-        if (topic === 'cafe/dashboard/new_order') {
-          console.log('🔔 Có đơn mới:', data);
-          setSoDonChoLam((prev) => prev + 1);
-          setOrders((prev) => {
-            const existing = prev.some((order) => String(order.id) === String(data.id) || String(order.order_number) === String(data.id));
-            if (existing) return prev;
-
-            const items = Array.isArray(data.items)
-              ? data.items.map((item: any) => ({
-                  id: item.id?.toString() ?? `${Math.random().toString(36).slice(2, 8)}`,
-                  name: item.name ?? 'Món mới',
-                  quantity: Number(item.quantity || 1),
-                  price: Number(item.price || 0),
-                  customizations: item.customizations,
-                }))
-              : [{
-                  id: data.item ? data.item.replace(/\s+/g, '-').toLowerCase() : '1',
-                  name: String(data.item ?? 'Món mới'),
-                  quantity: 1,
-                  price: Number(data.price || 0),
-                  customizations: {},
-                }];
-
-            const newOrder: KitchenOrder = {
-              id: Number(data.id) || Date.now(),
-              order_number: String(data.order_number ?? data.id ?? `MQTT-${Date.now()}`),
-              table_number: String(data.table ?? data.tableNumber ?? '1'),
-              total: Number(data.total || items.reduce((sum: number, item: any) => sum + item.price * item.quantity, 0)),
-              status: 'pending',
-              created_at: new Date().toISOString(),
-              items,
-            };
-
-            toast.success('📥 Đã nhận được đơn mới từ MQTT!');
-            return [newOrder, ...prev];
-          });
+        // Chỉ dùng MQTT để nhận trạng thái khi nút trên mạch cứng ESP32 được bấm
+        if (topic === 'cafe/dashboard/status' && data.status === 'COMPLETED') {
+          console.log('✅ ESP32 báo hoàn thành đơn:', data);
+          toast.success(`Mạch đã làm xong đơn ${data.id}!`);
+          setOrders((prev) =>
+            prev.map((order) =>
+              String(order.id) === String(data.id) || String(order.order_number) === String(data.id)
+                ? { ...order, status: 'completed' }
+                : order
+            )
+          );
         }
-
-        if (topic === 'cafe/dashboard/status') {
-          console.log('✅ ESP32 báo trạng thái đơn:', data);
-          if (data.status === 'COMPLETED') {
-            toast.success(`Mạch đã làm xong đơn ${data.id}!`);
-            setSoDonChoLam((prev) => Math.max(0, prev - 1));
-            setOrders((prev) =>
-              prev.map((order) =>
-                String(order.id) === String(data.id) || String(order.order_number) === String(data.id)
-                  ? { ...order, status: 'completed' }
-                  : order
-              )
-            );
-          }
-        }
-      } catch (error) {
-        console.error('MQTT message parse failed:', error);
-      }
+      } catch (error) { console.error('MQTT parse failed:', error); }
     };
 
     const handleConnect = () => setMqttConnected(true);
     const handleDisconnect = () => setMqttConnected(false);
-    const handleError = () => setMqttConnected(false);
 
     client.on('connect', handleConnect);
     client.on('reconnect', handleDisconnect);
     client.on('offline', handleDisconnect);
-    client.on('error', handleError);
+    if (client.connected) setMqttConnected(true);
 
-    if (client.connected) {
-      setMqttConnected(true);
-    }
-
-    client.subscribe('cafe/dashboard/status', (err) => {
-      if (err) console.error('MQTT subscribe failed:', err);
-    });
-    client.subscribe('cafe/dashboard/new_order', (err) => {
-      if (err) console.error('MQTT subscribe failed:', err);
-    });
+    client.subscribe('cafe/dashboard/status');
     client.on('message', handleMqttMessage);
 
     return () => {
@@ -276,19 +213,43 @@ export default function DashboardPage() {
       client.removeListener('connect', handleConnect);
       client.removeListener('reconnect', handleDisconnect);
       client.removeListener('offline', handleDisconnect);
-      client.removeListener('error', handleError);
       client.unsubscribe('cafe/dashboard/status');
-      client.unsubscribe('cafe/dashboard/new_order');
     };
   }, [])
 
+  // ====================== EFFECT LẮNG NGHE WEB BACKEND (SOCKET.IO) ======================
   useEffect(() => {
     setIsLoading(true)
+    // Tải danh sách đơn hàng ban đầu
     fetch(`${BACKEND_URL}/api/orders`)
       .then((res) => res.json())
       .then((data) => setOrders(data || []))
       .catch(console.error)
       .finally(() => setIsLoading(false))
+
+    // 🚀 Lắng nghe Socket.io để realtime MƯỢT MÀ với dữ liệu JSON chuẩn
+    const socket = io(BACKEND_URL);
+
+    // KHI CÓ ĐƠN MỚI
+    socket.on('order:new', (newOrder) => {
+      setOrders((prev) => {
+        // Tránh trùng lặp
+        if (prev.some((o) => String(o.id) === String(newOrder.id))) return prev;
+        toast.success(`📥 Có đơn mới từ Bàn ${newOrder.table_number}!`);
+        return [newOrder, ...prev];
+      });
+    });
+
+    // KHI ĐƠN BỊ THAY ĐỔI (Thanh toán, Trạng thái...)
+    socket.on('order:updated', (updatedOrder) => {
+      setOrders((prev) => 
+        prev.map((o) => (String(o.id) === String(updatedOrder.id) ? updatedOrder : o))
+      );
+    });
+
+    return () => {
+      socket.disconnect();
+    }
   }, [])
 
   if (!isMounted) {
@@ -312,10 +273,10 @@ export default function DashboardPage() {
               <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                 <div className={`flex items-center gap-2 rounded-full px-3 py-1 ${mqttConnected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                   <span className={`h-2.5 w-2.5 rounded-full ${mqttConnected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
-                  {mqttConnected ? 'Đã kết nối MQTT' : 'Mất kết nối MQTT...'}
+                  {mqttConnected ? 'Đã kết nối MQTT (Phần cứng)' : 'Mất kết nối MQTT...'}
                 </div>
                 <div className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
-                  ⏳ {soDonChoLam} đơn chờ làm
+                  ⏳ {stats.pendingCount} đơn chờ làm
                 </div>
               </div>
             </div>
@@ -327,8 +288,7 @@ export default function DashboardPage() {
                   activeTab === 'orders' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <LayoutDashboard size={18} />
-                Nhận Order
+                <LayoutDashboard size={18} /> Nhận Order
               </button>
               
               <button
@@ -337,8 +297,7 @@ export default function DashboardPage() {
                   activeTab === 'tables' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <LayoutGrid size={18} />
-                Quản lý bàn
+                <LayoutGrid size={18} /> Quản lý bàn
               </button>
 
               <button
@@ -347,8 +306,7 @@ export default function DashboardPage() {
                   activeTab === 'statistics' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                <History size={18} />
-                Thống kê
+                <History size={18} /> Thống kê
               </button>
             </div>
           </div>
@@ -452,7 +410,6 @@ export default function DashboardPage() {
                           <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready').then(() => {
                               setOrders((prev) => prev.map((item) => String(item.id) === String(order.id) ? { ...item, status: 'ready' } : item))
                               
-                              // Bắn tín hiệu Firebase gọi còi ESP32
                               const matchSoBan = String(order.table_number).match(/\d+/);
                               const soBanFirebase = matchSoBan ? matchSoBan[0] : "1";
                               handleGoiKhach(soBanFirebase);
@@ -495,7 +452,6 @@ export default function DashboardPage() {
                             }
                             
                             updateOrderStatus(order.id, 'completed').then(() => {
-                              // Cập nhật trạng thái thành completed nhưng VẪN GIỮ LẠI TRÊN MÀN HÌNH (không xóa khỏi mảng)
                               setOrders((prev) => prev.map((item) => String(item.id) === String(order.id) ? { ...item, status: 'completed' } : item));
                               toast.success(`Đã đóng đơn #${order.order_number} và dọn bàn thành công!`);
                             });

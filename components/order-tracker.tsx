@@ -22,12 +22,19 @@ const statusSteps = [
 ]
 
 export function OrderTracker() {
-  const { currentOrder, updateOrderStatus } = useCartStore()
+  // 🚀 Lấy thêm hàm setOrder để đẩy đơn AI vào máy khách
+  const { currentOrder, updateOrderStatus, setOrder } = useCartStore()
   const [showNotification, setShowNotification] = useState(false)
   const [notificationMsg, setNotificationMsg] = useState({ title: '', desc: '' })
   const [isExpanded, setIsExpanded] = useState(true)
   
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const currentOrderRef = useRef(currentOrder)
+
+  // Lưu trữ state mới nhất vào ref để tránh lỗi vòng lặp Socket
+  useEffect(() => {
+    currentOrderRef.current = currentOrder
+  }, [currentOrder])
 
   useEffect(() => {
     audioRef.current = new Audio('https://www.soundjay.com/buttons/sounds/button-09.mp3')
@@ -40,16 +47,34 @@ export function OrderTracker() {
     }
   }
 
-  // Lắng nghe socket an toàn, dùng ref để tránh gọi state gây lỗi vòng lặp
+  // Lắng nghe socket an toàn
   useEffect(() => {
-    if (!currentOrder?.id) return
-
     const socketUrl = process.env.NEXT_PUBLIC_API_URL || 'https://bin-coffee.onrender.com'
     const socket = io(socketUrl)
 
+    // 🚀 Lấy số bàn từ URL (Khách đang ở link /table/2 sẽ lấy ra số 2)
+    const pathParts = window.location.pathname.split('/')
+    const currentTable = pathParts[pathParts.length - 1]
+
+    // 1. KHI AI HOẶC NHÂN VIÊN TẠO ĐƠN MỚI
+    socket.on('order:new', (newOrder) => {
+      // Chỉ hiện pop-up nếu đơn này đúng là của bàn khách đang ngồi
+      if (newOrder && String(newOrder.table_number) === String(currentTable)) {
+        setOrder(newOrder) // Tự động load đơn vào màn hình khách!
+        setNotificationMsg({ 
+          title: 'AI đã lên đơn cho bạn!', 
+          desc: `Gồm ${newOrder.items?.length || 0} món. Quán đang chuẩn bị 👨‍🍳` 
+        })
+        setShowNotification(true)
+        playNotificationSound()
+      }
+    })
+
+    // 2. KHI ĐƠN HÀNG ĐƯỢC CẬP NHẬT TRẠNG THÁI TỪ BẾP
     socket.on('order:updated', (updatedOrder) => {
-      if (updatedOrder && Number(updatedOrder.id) === Number(currentOrder.id)) {
-        if (updatedOrder.status !== currentOrder.status) {
+      const latestOrder = currentOrderRef.current
+      if (latestOrder && updatedOrder && Number(updatedOrder.id) === Number(latestOrder.id)) {
+        if (updatedOrder.status !== latestOrder.status) {
           updateOrderStatus(updatedOrder.status)
           
           const statusText = 
@@ -72,8 +97,9 @@ export function OrderTracker() {
     return () => {
       socket.disconnect()
     }
-  }, [currentOrder?.id, currentOrder?.status, updateOrderStatus])
+  }, [setOrder, updateOrderStatus])
 
+  // Nếu không có đơn thì ẩn giao diện này đi (Nhưng code socket bên trên vẫn chạy ngầm để nghe ngóng)
   if (!currentOrder) return null
 
   const currentStepIndex = statusSteps.findIndex(

@@ -371,7 +371,16 @@ function connectXiaoZhi(url, index) {
           
           // Gửi thêm một lệnh tổng cho quầy (nếu phần cứng quầy của bạn đang lắng nghe kênh chung)
           if (mqttClient && mqttClient.connected) {
-            mqttClient.publish('coffee/kitchen/new-order', JSON.stringify(order), { qos: 0 });
+            const espPayload = JSON.stringify({
+              id: order.order_number || String(order.id),
+              table: String(order.table_number),
+              item: order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')
+            });
+            
+            // Bắn vào đúng kênh mà ESP32 đang lắng nghe
+            mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
+            // Đồng thời bắn sang kênh cũ nếu cần
+            mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 });
           }
 
           console.log(`✅ Đã tạo đơn AI cho Bàn ${tableNumber} và báo phần cứng thành công!`);

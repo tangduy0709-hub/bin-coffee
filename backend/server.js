@@ -257,6 +257,10 @@ async function modifyOrderRecord({ tableNumber, items }) {
   const updatedOrder = ordersList.find(o => o.id === orderId);
 
   io.emit('order:updated', updatedOrder);
+  await publishTableNotification(tableNumber, { 
+    event: 'order_updated', 
+    order: updatedOrder 
+  });
 
   if (mqttClient && mqttClient.connected) {
     const chuoiMonAn = items.map(i => `${i.quantity}x ${i.name}`).join(', ');

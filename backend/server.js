@@ -240,68 +240,7 @@ async function createOrderRecord({ tableNumber, items, note }) {
 
   return newOrderObj;
 }
-// =========================================================
-// 🚀 HÀM ĐỔI/CẬP NHẬT ĐƠN HÀNG KHI KHÁCH ĐỔI Ý
-// =========================================================
-async function modifyOrderRecord({ tableNumber, items }) {
-  // 1. Tìm đơn hàng gần nhất của bàn này đang chưa hoàn thành
-  const [rows] = await pool.query(
-    `SELECT * FROM orders WHERE table_number = ? AND status IN ('pending', 'preparing') ORDER BY created_at DESC LIMIT 1`,
-    [tableNumber]
-  );
 
-  if (rows.length === 0) {
-    throw new Error("TOO_LATE"); // Đã pha xong hoặc không có đơn
-  }
-
-  const order = rows[0];
-  const orderId = order.id;
-
-  // 2. Xóa sạch chi tiết món cũ trong Database
-  await pool.query(`DELETE FROM order_details WHERE order_id = ?`, [orderId]);
-
-  // 3. Nếu khách hủy toàn bộ đơn (mảng items rỗng) -> Xóa luôn đơn
-  if (!items || items.length === 0) {
-    await pool.query(`DELETE FROM orders WHERE id = ?`, [orderId]);
-    io.emit('order:updated', { id: orderId, isDeleted: true, table_number: tableNumber });
-    
-    if (mqttClient && mqttClient.connected) {
-      mqttClient.publish('coffee/kitchen', JSON.stringify({ id: order.order_number, table: String(tableNumber), item: "[DA HUY DON]" }), { qos: 0 });
-    }
-    return null;
-  }
-
-  // 4. Thêm món mới vào và tính lại tổng tiền
-  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const details = items.map((item) => [orderId, item.id, item.name, item.quantity, item.price]);
-  
-  await pool.query(`INSERT INTO order_details (order_id, menu_item_id, menu_item_name, quantity, price) VALUES ?`, [details]);
-  await pool.query(`UPDATE orders SET total = ? WHERE id = ?`, [total, orderId]);
-
-  // Lấy lại đơn đã cập nhật để gửi ra Web
-  const ordersList = await fetchOrders();
-  const updatedOrder = ordersList.find(o => o.id === orderId);
-
-  // 5. Cập nhật Dashboard
-  io.emit('order:updated', updatedOrder);
-
-  // 6. Bắn thông báo MQTT cho mạch ESP32 ở quầy (Thêm chữ [ĐỔI MÓN])
-  if (mqttClient && mqttClient.connected) {
-    const chuoiMonAn = items.map(i => `${i.quantity}x ${i.name}`).join(', ');
-    const chuoiKhongDau = boDauTiengViet(chuoiMonAn);
-
-    const espPayload = JSON.stringify({
-      id: order.order_number,
-      table: String(tableNumber),
-      item: "[DOI MON] " + chuoiKhongDau // Gây chú ý cho Barista
-    });
-    
-    mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
-    mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 }); // Còi quầy vẫn sẽ kêu để Barista biết
-  }
-
-  return updatedOrder;
-}
 async function fetchOrders() {
   const [rows] = await pool.query(`SELECT * FROM orders ORDER BY created_at DESC LIMIT 50`)
   const orders = []
@@ -414,41 +353,41 @@ function connectXiaoZhi(url, index) {
       if (message.method === 'initialize') {
         ws.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "server", version: "1.0.0" } } })); return;
       }
-      
       if (message.method === 'tools/list') {
         ws.send(JSON.stringify({ 
           jsonrpc: "2.0", 
           id: message.id, 
           result: { 
-            tools: [
-              { 
-                name: "create_voice_order", 
-                description: "Tạo đơn hàng MỚI gồm nhiều món. Chỉ dùng khi khách GỌI LẦN ĐẦU. Gửi theo mẫu JSON: {\"tableNumber\":\"1\",\"items\":[{\"itemName\":\"Cà Phê Đá\",\"quantity\":2}]}", 
-                inputSchema: { 
-                  type: "object", 
-                  properties: { 
-                    tableNumber: { type: "string" }, 
-                    items: { type: "array", items: { type: "object", properties: { itemName: { type: "string" }, quantity: { type: "number" } }, required: ["itemName", "quantity"] } } 
-                  }, required: ["tableNumber", "items"]
-                } 
-              },
-              {
-                name: "update_voice_order",
-                description: "Dùng để ĐỔI MÓN, THÊM MÓN, hoặc HỦY MÓN ĐÃ CHỐT trước đó. Truyền vào danh sách MỚI HOÀN TOÀN (tổng hợp lại các món khách giữ và món mới). Nếu khách hủy toàn bộ, truyền mảng items rỗng.",
-                inputSchema: { 
-                  type: "object", 
-                  properties: { 
-                    tableNumber: { type: "string" }, 
-                    items: { type: "array", items: { type: "object", properties: { itemName: { type: "string" }, quantity: { type: "number" } }, required: ["itemName", "quantity"] } } 
-                  }, required: ["tableNumber", "items"]
-                }
-              }
-            ] 
+            tools: [{ 
+              name: "create_voice_order", 
+              description: "Tạo đơn hàng gồm nhiều món. Gửi theo mẫu JSON: {\"tableNumber\":\"1\",\"items\":[{\"itemName\":\"Cà Phê Đá\",\"quantity\":2}]}", 
+              inputSchema: { 
+                type: "object", 
+                properties: { 
+                  tableNumber: { type: "string" }, 
+                  items: { 
+                    type: "array", 
+                    items: {
+                      type: "object",
+                      properties: {
+                        itemName: { type: "string" },
+                        quantity: { type: "number" }
+                      },
+                      required: ["itemName", "quantity"]
+                    }
+                  } 
+                }, 
+                required: ["tableNumber", "items"],
+                examples: [{
+                  tableNumber: "1",
+                  items: [{ itemName: "Cà Phê Đá", quantity: 2 }, { itemName: "Trà Đào", quantity: 1 }]
+                }]
+              } 
+            }] 
           } 
         })); 
         return;
       }
-      
       if (message.method === 'ping') {
         ws.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} })); return;
       }
@@ -512,44 +451,8 @@ function connectXiaoZhi(url, index) {
           console.error('Lỗi lưu đơn:', dbError); 
           ws.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "Lỗi hệ thống khi lưu đơn." }] } }));
         }
-      } 
-      else if (message.method === 'tools/call' && message.params?.name === 'update_voice_order') {
-        const rawArguments = message.params?.arguments || {};
-        const tableNumber = rawArguments.tableNumber;
-        const items = rawArguments.items || [];
-        
-        try {
-          const orderItems = [];
-          for (const rawItem of items) {
-            const menuItem = await findMenuItemByName(rawItem.itemName);
-            if (menuItem) {
-              orderItems.push({ id: menuItem.id, name: menuItem.name, quantity: Number(rawItem.quantity || 1), price: Number(menuItem.price) });
-            }
-          }
-
-          await modifyOrderRecord({ tableNumber: String(tableNumber), items: orderItems });
-          
-          ws.send(JSON.stringify({
-            jsonrpc: "2.0", id: message.id, 
-            result: { content: [{ type: "text", text: `Đổi món thành công. Hãy báo khách: "Dạ vâng, em đã cập nhật lại đơn cho mình rồi ạ!"` }] }
-          }));
-
-        } catch (error) {
-          if (error.message === "TOO_LATE") {
-            ws.send(JSON.stringify({
-              jsonrpc: "2.0", id: message.id, 
-              result: { content: [{ type: "text", text: "Báo khách khéo léo: Dạ món của mình quầy đã pha xong mất rồi, em không đổi được nữa, anh chị thông cảm nhé!" }] }
-            }));
-          } else {
-            console.error('Lỗi đổi đơn:', error);
-            ws.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "Lỗi hệ thống khi sửa đơn." }] } }));
-          }
-        }
       }
-    } catch (error) { 
-      // 🚀 ĐÂY CHÍNH LÀ DÒNG CATCH MÀ BẠN ĐÃ LỠ XÓA MẤT GÂY RA LỖI ĐỎ
-      console.error('Lỗi JSON:', error); 
-    }
+    } catch (error) { console.error('Lỗi JSON:', error); }
   });
 
   ws.on('close', () => {

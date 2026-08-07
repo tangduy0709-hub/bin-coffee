@@ -215,22 +215,35 @@ async function createOrderRecord({ tableNumber, items, note }) {
 // 🚀 HÀM ĐỔI/CẬP NHẬT ĐƠN HÀNG KHI KHÁCH ĐỔI Ý (DÀNH CHO AI)
 // =========================================================
 async function modifyOrderRecord({ tableNumber, items }) {
+  // 🚀 SỬA LẠI: Lấy tất cả các đơn chưa hoàn thành của bàn này
   const [rows] = await pool.query(
-    `SELECT * FROM orders WHERE table_number = ? AND status IN ('pending', 'preparing') ORDER BY created_at DESC LIMIT 1`,
+    `SELECT * FROM orders WHERE table_number = ? AND status IN ('pending', 'preparing') ORDER BY created_at DESC`,
     [tableNumber]
   );
 
-  if (rows.length === 0) throw new Error("TOO_LATE"); 
-  const order = rows[0]; const orderId = order.id;
+  if (rows.length === 0) {
+    // Nếu không có đơn nào đang làm, tự động chuyển sang TẠO ĐƠN MỚI luôn cho mượt
+    return await createOrderRecord({ tableNumber, items, note: 'Khách gọi qua AI (Tự động tạo mới)' });
+  }
 
+  // Lấy đơn MỚI NHẤT (Đơn trên cùng)
+  const order = rows[0];
+  const orderId = order.id;
+
+  // 🧹 NẾU CÓ NHIỀU ĐƠN CŨ DƯ THỪA, GỘP HOẶC XÓA BỚT ĐỂ TRÁNH RỐC RÁC TRÊN DASHBOARD
+  if (rows.length > 1) {
+    for (let i = 1; i < rows.length; i++) {
+      await pool.query(`DELETE FROM order_details WHERE order_id = ?`, [rows[i].id]);
+      await pool.query(`DELETE FROM orders WHERE id = ?`, [rows[i].id]);
+    }
+  }
+
+  // Xóa chi tiết món cũ của đơn mới nhất để nạp danh sách món mới do khách vừa thay đổi
   await pool.query(`DELETE FROM order_details WHERE order_id = ?`, [orderId]);
 
   if (!items || items.length === 0) {
     await pool.query(`DELETE FROM orders WHERE id = ?`, [orderId]);
     io.emit('order:updated', { id: orderId, isDeleted: true, table_number: tableNumber });
-    if (mqttClient && mqttClient.connected) {
-      mqttClient.publish('coffee/kitchen', JSON.stringify({ id: order.order_number, table: String(tableNumber), item: "[DA HUY DON]" }), { qos: 0 });
-    }
     return null;
   }
 
@@ -248,10 +261,15 @@ async function modifyOrderRecord({ tableNumber, items }) {
   if (mqttClient && mqttClient.connected) {
     const chuoiMonAn = items.map(i => `${i.quantity}x ${i.name}`).join(', ');
     const chuoiKhongDau = boDauTiengViet(chuoiMonAn);
-    const espPayload = JSON.stringify({ id: order.order_number, table: String(tableNumber), item: "[DOI MON] " + chuoiKhongDau });
+    const espPayload = JSON.stringify({
+      id: order.order_number,
+      table: String(tableNumber),
+      item: "[DOI MON] " + chuoiKhongDau 
+    });
     mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
     mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 }); 
   }
+
   return updatedOrder;
 }
 

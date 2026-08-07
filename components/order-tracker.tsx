@@ -41,6 +41,7 @@ export function OrderTracker() {
   }
 
   // Lắng nghe socket 24/7 (KHÔNG phụ thuộc vào việc có đơn hay chưa)
+  // Lắng nghe socket 24/7 (Cập nhật cả trạng thái lẫn danh sách món khi AI sửa đơn)
   useEffect(() => {
     const socket = io(BACKEND_URL)
 
@@ -54,11 +55,7 @@ export function OrderTracker() {
 
     // 1. KHI CÓ ĐƠN MỚI TỪ AI HOẶC DASHBOARD
     socket.on('order:new', (newOrder) => {
-      console.log('📥 Phát hiện tín hiệu đơn mới:', newOrder);
-      
-      // Khớp đúng bàn đang ngồi mới đẩy vào màn hình
       if (newOrder && String(newOrder.table_number) === String(currentTable)) {
-        console.log('🎉 Đơn của đúng bàn này! Đang cập nhật giao diện...');
         setOrder(newOrder); 
         setNotificationMsg({ 
           title: 'AI đã lên đơn cho bạn!', 
@@ -69,23 +66,33 @@ export function OrderTracker() {
       }
     })
 
-    // 2. KHI ĐƠN BỊ BẾP ĐỔI TRẠNG THÁI (Pha chế, Xong...)
+    // 2. KHI ĐƠN BỊ BẾP ĐỔI TRẠNG THÁI HOẶC AI ĐỔI/THÊM/BỚT MÓN
     socket.on('order:updated', (updatedOrder) => {
       const latestOrder = currentOrderRef.current
-      if (latestOrder && updatedOrder && Number(updatedOrder.id) === Number(latestOrder.id)) {
-        if (updatedOrder.status !== latestOrder.status) {
-          updateOrderStatus(updatedOrder.status)
-          
-          const statusText = 
-            updatedOrder.status === 'preparing' ? 'Đang được pha chế 👨‍🍳' : 
-            updatedOrder.status === 'ready' ? 'Đã pha xong, mời bạn thưởng thức! ☕' : 
-            updatedOrder.status === 'completed' ? 'Đã hoàn thành' : ''
+      
+      // Kiểm tra nếu đơn cập nhật thuộc về đúng bàn này
+      if (updatedOrder && String(updatedOrder.table_number) === String(currentTable)) {
+        
+        // Cập nhật lại toàn bộ state đơn hàng (giúp web khách tự thay đổi danh sách món và tổng tiền ngay lập tức)
+        if (!latestOrder || Number(updatedOrder.id) === Number(latestOrder.id)) {
+          setOrder(updatedOrder)
+        }
 
-          if (statusText) {
-            setNotificationMsg({ title: 'Đơn hàng đã cập nhật!', desc: statusText })
-            setShowNotification(true)
-            playNotificationSound()
-          }
+        // Bắn thông báo nếu trạng thái thay đổi hoặc có đổi món
+        if (!latestOrder || updatedOrder.status !== latestOrder.status) {
+          const statusText = 
+            updatedOrder.status === 'preparing' ? 'Đơn hàng đang được chuẩn bị 👨‍🍳' : 
+            updatedOrder.status === 'ready' ? 'Đã pha xong, mời bạn thưởng thức! ☕' : 
+            updatedOrder.status === 'completed' ? 'Đã hoàn thành' : 'Đơn hàng đã được cập nhật'
+
+          setNotificationMsg({ title: 'Cập nhật từ quán / AI!', desc: statusText })
+          setShowNotification(true)
+          playNotificationSound()
+        } else {
+          // Trường hợp giữ nguyên trạng thái nhưng ĐỔI MÓN (Thêm/Bớt món)
+          setNotificationMsg({ title: 'Đơn hàng đã được thay đổi!', desc: 'Danh sách món của bạn vừa được cập nhật lại.' })
+          setShowNotification(true)
+          playNotificationSound()
         }
       }
     })
@@ -93,7 +100,7 @@ export function OrderTracker() {
     return () => {
       socket.disconnect()
     }
-  }, [setOrder, updateOrderStatus]) // Socket kết nối 1 lần duy nhất
+  }, [setOrder, updateOrderStatus])
 
   // HIỂN THỊ GIAO DIỆN (Nếu chưa có đơn thì ẨN UI, nhưng Hook Socket ở trên VẪN CHẠY NGẦM)
   if (!currentOrder) return null

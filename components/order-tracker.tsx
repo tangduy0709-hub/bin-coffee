@@ -42,6 +42,7 @@ export function OrderTracker() {
 
   // Lắng nghe socket 24/7 (KHÔNG phụ thuộc vào việc có đơn hay chưa)
   // Lắng nghe socket 24/7 (Cập nhật cả trạng thái lẫn danh sách món khi AI sửa đơn)
+  // Lắng nghe socket 24/7 cho đúng số bàn hiện tại
   useEffect(() => {
     const socket = io(BACKEND_URL)
 
@@ -50,57 +51,40 @@ export function OrderTracker() {
     const currentTable = pathParts[pathParts.length - 1]
 
     socket.on('connect', () => {
-      console.log(`✅ Khách hàng kết nối Socket thành công! Đang "hóng" đơn cho Bàn số: ${currentTable}`);
+      console.log(`✅ Kết nối Socket thành công cho Bàn số: ${currentTable}`);
     })
 
-    // 1. KHI CÓ ĐƠN MỚI TỪ AI HOẶC DASHBOARD
-    socket.on('order:new', (newOrder) => {
-      if (newOrder && String(newOrder.table_number) === String(currentTable)) {
-        setOrder(newOrder); 
+    // KHI CÓ BẤT KỲ CẬP NHẬT NÀO (Tạo mới, Sửa món, Đổi trạng thái)
+    socket.on('order:updated', (updatedOrder) => {
+      if (updatedOrder && String(updatedOrder.table_number) === String(currentTable)) {
+        console.log('🔄 Nhận dữ liệu đơn hàng mới từ server/AI:', updatedOrder);
+        
+        // 🚀 BẮT BUỘC GÁN LẠI ĐƠN HÀNG NGAY LẬP TỨC CHO GIAO DIỆN TỰ ĐỔI
+        setOrder(updatedOrder);
+
         setNotificationMsg({ 
-          title: 'AI đã lên đơn cho bạn!', 
-          desc: `Gồm ${newOrder.items?.length || 0} món. Quán đang chuẩn bị 👨‍🍳` 
+          title: 'Đơn hàng đã được cập nhật!', 
+          desc: 'Danh sách món hoặc trạng thái vừa được thay đổi.' 
         });
         setShowNotification(true);
         playNotificationSound();
       }
-    })
+    });
 
-    // 2. KHI ĐƠN BỊ BẾP ĐỔI TRẠNG THÁI HOẶC AI ĐỔI/THÊM/BỚT MÓN
-    socket.on('order:updated', (updatedOrder) => {
-      const latestOrder = currentOrderRef.current
-      
-      // Kiểm tra nếu đơn cập nhật thuộc về đúng bàn này
-      if (updatedOrder && String(updatedOrder.table_number) === String(currentTable)) {
-        
-        // Cập nhật lại toàn bộ state đơn hàng (giúp web khách tự thay đổi danh sách món và tổng tiền ngay lập tức)
-        if (!latestOrder || Number(updatedOrder.id) === Number(latestOrder.id)) {
-          setOrder(updatedOrder)
-        }
-
-        // Bắn thông báo nếu trạng thái thay đổi hoặc có đổi món
-        if (!latestOrder || updatedOrder.status !== latestOrder.status) {
-          const statusText = 
-            updatedOrder.status === 'preparing' ? 'Đơn hàng đang được chuẩn bị 👨‍🍳' : 
-            updatedOrder.status === 'ready' ? 'Đã pha xong, mời bạn thưởng thức! ☕' : 
-            updatedOrder.status === 'completed' ? 'Đã hoàn thành' : 'Đơn hàng đã được cập nhật'
-
-          setNotificationMsg({ title: 'Cập nhật từ quán / AI!', desc: statusText })
-          setShowNotification(true)
-          playNotificationSound()
-        } else {
-          // Trường hợp giữ nguyên trạng thái nhưng ĐỔI MÓN (Thêm/Bớt món)
-          setNotificationMsg({ title: 'Đơn hàng đã được thay đổi!', desc: 'Danh sách món của bạn vừa được cập nhật lại.' })
-          setShowNotification(true)
-          playNotificationSound()
-        }
+    // Trường hợp tạo đơn hoàn toàn mới
+    socket.on('order:new', (newOrder) => {
+      if (newOrder && String(newOrder.table_number) === String(currentTable)) {
+        setOrder(newOrder);
+        setNotificationMsg({ title: 'Đã lên đơn thành công!', desc: 'Quán đang chuẩn bị món cho bạn.' });
+        setShowNotification(true);
+        playNotificationSound();
       }
-    })
+    });
 
     return () => {
       socket.disconnect()
     }
-  }, [setOrder, updateOrderStatus])
+  }, [setOrder])
 
   // HIỂN THỊ GIAO DIỆN (Nếu chưa có đơn thì ẨN UI, nhưng Hook Socket ở trên VẪN CHẠY NGẦM)
   if (!currentOrder) return null

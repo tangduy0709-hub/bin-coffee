@@ -136,25 +136,6 @@ async function connectDatabase() {
         )
       `)
 
-      const [menuRows] = await pool.query('SELECT COUNT(*) AS count FROM menu')
-      if (menuRows[0].count === 0) {
-        await pool.query(`INSERT INTO menu (name, description, price, image, category, tags, recommended) VALUES ?`, [
-          [
-            ['Cà Phê Đá', 'Cà phê pha phin, phục vụ kèm đá', 28000, '/images/ca-phe-da.jpg', 'coffee', JSON.stringify(['Tươi']), false],
-            ['Cà Phê Sữa', 'Cà phê pha với sữa đặc, thơm và ngọt dịu', 30000, '/images/ca-phe-sua.jpg', 'coffee', JSON.stringify(['Ngọt']), false],
-            ['Bạc Xỉu', 'Cà phê nhẹ nhàng pha nhiều sữa, vị mềm mịn', 32000, '/images/bac-xiu.jpg', 'coffee', JSON.stringify(['Mềm']), false],
-            ['Trà Đào', 'Trà đào đá tươi, thơm mùi đào', 28000, '/images/tra-dao.jpg', 'tea', JSON.stringify(['Trái cây']), false],
-            ['Nước Cam', 'Nước cam vắt tươi, không đường', 35000, '/images/nuoc-cam.jpg', 'specialty', JSON.stringify(['Tươi']), false],
-          ],
-        ])
-      }
-
-      const [tableRows] = await pool.query('SELECT COUNT(*) AS count FROM tables')
-      if (tableRows[0].count === 0) {
-        const tableData = Array.from({ length: 8 }, (_, index) => [ `${index + 1}`, `token-table-${index + 1}-${Math.random().toString(36).slice(2, 8)}` ])
-        await pool.query('INSERT INTO tables (table_number, token) VALUES ?', [tableData])
-      }
-
       console.log(`Database initialized successfully!`)
       return
     } catch (error) {
@@ -196,6 +177,9 @@ async function findMenuItemByName(itemName) {
   } catch (error) { return null; }
 }
 
+// =========================================================
+// 🚀 HÀM TẠO ĐƠN MỚI
+// =========================================================
 async function createOrderRecord({ tableNumber, items, note }) {
   const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
   const orderNumber = `ORD-${Date.now().toString(36).toUpperCase()}`
@@ -209,15 +193,8 @@ async function createOrderRecord({ tableNumber, items, note }) {
   await pool.query(`INSERT INTO order_details (order_id, menu_item_id, menu_item_name, quantity, price) VALUES ?`, [details])
 
   const newOrderObj = { 
-    id: orderId, 
-    order_number: orderNumber, 
-    table_number: tableNumber, 
-    table: tableNumber, 
-    total, 
-    status: 'pending', 
-    note: note || '', 
-    created_at: new Date(), 
-    items 
+    id: orderId, order_number: orderNumber, table_number: tableNumber, table: tableNumber, 
+    total, status: 'pending', note: note || '', created_at: new Date(), items 
   };
 
   io.emit('order:new', newOrderObj);
@@ -226,19 +203,56 @@ async function createOrderRecord({ tableNumber, items, note }) {
   if (mqttClient && mqttClient.connected) {
     const chuoiMonAn = items.map(i => `${i.quantity}x ${i.name}`).join(', ');
     const chuoiKhongDau = boDauTiengViet(chuoiMonAn);
-
-    const espPayload = JSON.stringify({
-      id: orderNumber,
-      table: String(tableNumber),
-      item: chuoiKhongDau
-    });
+    const espPayload = JSON.stringify({ id: orderNumber, table: String(tableNumber), item: chuoiKhongDau });
     
     mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
     mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 });
-    console.log(`🔊 Đã phát còi MQTT và Socket cho đơn: ${orderNumber}`);
+  }
+  return newOrderObj;
+}
+
+// =========================================================
+// 🚀 HÀM ĐỔI/CẬP NHẬT ĐƠN HÀNG KHI KHÁCH ĐỔI Ý (DÀNH CHO AI)
+// =========================================================
+async function modifyOrderRecord({ tableNumber, items }) {
+  const [rows] = await pool.query(
+    `SELECT * FROM orders WHERE table_number = ? AND status IN ('pending', 'preparing') ORDER BY created_at DESC LIMIT 1`,
+    [tableNumber]
+  );
+
+  if (rows.length === 0) throw new Error("TOO_LATE"); 
+  const order = rows[0]; const orderId = order.id;
+
+  await pool.query(`DELETE FROM order_details WHERE order_id = ?`, [orderId]);
+
+  if (!items || items.length === 0) {
+    await pool.query(`DELETE FROM orders WHERE id = ?`, [orderId]);
+    io.emit('order:updated', { id: orderId, isDeleted: true, table_number: tableNumber });
+    if (mqttClient && mqttClient.connected) {
+      mqttClient.publish('coffee/kitchen', JSON.stringify({ id: order.order_number, table: String(tableNumber), item: "[DA HUY DON]" }), { qos: 0 });
+    }
+    return null;
   }
 
-  return newOrderObj;
+  const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const details = items.map((item) => [orderId, item.id, item.name, item.quantity, item.price]);
+  
+  await pool.query(`INSERT INTO order_details (order_id, menu_item_id, menu_item_name, quantity, price) VALUES ?`, [details]);
+  await pool.query(`UPDATE orders SET total = ? WHERE id = ?`, [total, orderId]);
+
+  const ordersList = await fetchOrders();
+  const updatedOrder = ordersList.find(o => o.id === orderId);
+
+  io.emit('order:updated', updatedOrder);
+
+  if (mqttClient && mqttClient.connected) {
+    const chuoiMonAn = items.map(i => `${i.quantity}x ${i.name}`).join(', ');
+    const chuoiKhongDau = boDauTiengViet(chuoiMonAn);
+    const espPayload = JSON.stringify({ id: order.order_number, table: String(tableNumber), item: "[DOI MON] " + chuoiKhongDau });
+    mqttClient.publish('coffee/kitchen', espPayload, { qos: 0 });
+    mqttClient.publish('cafe/dashboard/new_order', espPayload, { qos: 0 }); 
+  }
+  return updatedOrder;
 }
 
 async function fetchOrders() {
@@ -251,6 +265,9 @@ async function fetchOrders() {
   return orders
 }
 
+// =========================================================
+// CÁC ĐƯỜNG DẪN API HTTP CỦA DASHBOARD
+// =========================================================
 app.get('/api/menu', async (req, res) => {
   try { const [rows] = await pool.query('SELECT * FROM menu ORDER BY category, name'); res.json(rows) } 
   catch (error) { res.status(500).json({ error: 'Không thể tải menu' }) }
@@ -311,11 +328,8 @@ const updateStatusHandler = async (req, res) => {
     if (order && order.table_number) {
       await publishTableNotification(order.table_number, { event: 'order_updated', order: order });
       // CHỈ GỌI CÒI NẾU TRẠNG THÁI LÀ READY
-      if (status === 'ready') {
-        triggerFirebaseBell(order.table_number);
-      }
+      if (status === 'ready') { triggerFirebaseBell(order.table_number); }
     }
-
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Lỗi' }); }
 };
@@ -333,13 +347,15 @@ const updatePaymentHandler = async (req, res) => {
     if (order && order.table_number) {
       await publishTableNotification(order.table_number, { event: 'order_updated', order: order });
     }
-
     res.json({ success: true });
   } catch (error) { res.status(500).json({ error: 'Lỗi' }); }
 };
 app.post('/api/order/:id/payment', updatePaymentHandler);
 app.put('/api/order/:id/payment', updatePaymentHandler);
 
+// =========================================================
+// 🚀 KẾT NỐI XIAO ZHI AI 
+// =========================================================
 function connectXiaoZhi(url, index) {
   console.log(`⏳ Đang kết nối Xiao Zhi cho Bàn ${index + 1}...`);
   const ws = new WebSocket(url);
@@ -353,41 +369,40 @@ function connectXiaoZhi(url, index) {
       if (message.method === 'initialize') {
         ws.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { protocolVersion: "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: "server", version: "1.0.0" } } })); return;
       }
+      
       if (message.method === 'tools/list') {
         ws.send(JSON.stringify({ 
-          jsonrpc: "2.0", 
-          id: message.id, 
+          jsonrpc: "2.0", id: message.id, 
           result: { 
-            tools: [{ 
-              name: "create_voice_order", 
-              description: "Tạo đơn hàng gồm nhiều món. Gửi theo mẫu JSON: {\"tableNumber\":\"1\",\"items\":[{\"itemName\":\"Cà Phê Đá\",\"quantity\":2}]}", 
-              inputSchema: { 
-                type: "object", 
-                properties: { 
-                  tableNumber: { type: "string" }, 
-                  items: { 
-                    type: "array", 
-                    items: {
-                      type: "object",
-                      properties: {
-                        itemName: { type: "string" },
-                        quantity: { type: "number" }
-                      },
-                      required: ["itemName", "quantity"]
-                    }
-                  } 
-                }, 
-                required: ["tableNumber", "items"],
-                examples: [{
-                  tableNumber: "1",
-                  items: [{ itemName: "Cà Phê Đá", quantity: 2 }, { itemName: "Trà Đào", quantity: 1 }]
-                }]
-              } 
-            }] 
+            tools: [
+              { 
+                name: "create_voice_order", 
+                description: "Tạo đơn hàng MỚI gồm nhiều món. Chỉ dùng khi khách GỌI LẦN ĐẦU. Gửi theo mẫu JSON: {\"tableNumber\":\"1\",\"items\":[{\"itemName\":\"Cà Phê Đá\",\"quantity\":2}]}", 
+                inputSchema: { 
+                  type: "object", 
+                  properties: { 
+                    tableNumber: { type: "string" }, 
+                    items: { type: "array", items: { type: "object", properties: { itemName: { type: "string" }, quantity: { type: "number" } }, required: ["itemName", "quantity"] } } 
+                  }, required: ["tableNumber", "items"]
+                } 
+              },
+              {
+                name: "update_voice_order",
+                description: "Dùng để ĐỔI MÓN, THÊM MÓN, hoặc HỦY MÓN ĐÃ CHỐT trước đó. Truyền vào danh sách MỚI HOÀN TOÀN (tổng hợp lại các món khách giữ và món mới). Nếu khách hủy toàn bộ, truyền mảng items rỗng.",
+                inputSchema: { 
+                  type: "object", 
+                  properties: { 
+                    tableNumber: { type: "string" }, 
+                    items: { type: "array", items: { type: "object", properties: { itemName: { type: "string" }, quantity: { type: "number" } }, required: ["itemName", "quantity"] } } 
+                  }, required: ["tableNumber", "items"]
+                }
+              }
+            ] 
           } 
         })); 
         return;
       }
+      
       if (message.method === 'ping') {
         ws.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: {} })); return;
       }
@@ -398,9 +413,7 @@ function connectXiaoZhi(url, index) {
         let items = rawArguments.items;
 
         if (!Array.isArray(items) || items.length === 0) {
-          if (rawArguments.itemName) {
-            items = [{ itemName: rawArguments.itemName, quantity: rawArguments.quantity ?? 1 }];
-          }
+          if (rawArguments.itemName) { items = [{ itemName: rawArguments.itemName, quantity: rawArguments.quantity ?? 1 }]; }
         }
         
         try {
@@ -413,12 +426,7 @@ function connectXiaoZhi(url, index) {
           for (const rawItem of items) {
             const menuItem = await findMenuItemByName(rawItem.itemName);
             if (menuItem) {
-              orderItems.push({
-                id: menuItem.id,
-                name: menuItem.name,
-                quantity: Number(rawItem.quantity || 1),
-                price: Number(menuItem.price)
-              });
+              orderItems.push({ id: menuItem.id, name: menuItem.name, quantity: Number(rawItem.quantity || 1), price: Number(menuItem.price) });
             }
           }
 
@@ -427,32 +435,53 @@ function connectXiaoZhi(url, index) {
             return;
           }
 
-          const order = await createOrderRecord({
-            tableNumber: String(tableNumber),
-            items: orderItems,
-            note: 'Khách gọi qua AI', 
-          });
-
+          const order = await createOrderRecord({ tableNumber: String(tableNumber), items: orderItems, note: 'Khách gọi qua AI' });
           await publishTableNotification(tableNumber, { event: 'voice_order_received', order });
-          console.log(`✅ Đã đồng bộ thành công cho cả Dashboard và Phần cứng quầy!`);
           
           ws.send(JSON.stringify({
-            jsonrpc: "2.0", 
-            id: message.id, 
-            result: { 
-              content: [{ 
-                type: "text", 
-                text: `Tạo đơn thành công! Hãy báo khách: "Dạ vâng, em đã lên đủ các món cho anh chị rồi ạ. Anh chị đợi một lát nhé!"` 
-              }] 
-            }
+            jsonrpc: "2.0", id: message.id, 
+            result: { content: [{ type: "text", text: `Tạo đơn thành công! Hãy báo khách: "Dạ vâng, em đã lên đủ các món cho anh chị rồi ạ. Anh chị đợi một lát nhé!"` }] }
           }));
 
         } catch (dbError) { 
-          console.error('Lỗi lưu đơn:', dbError); 
           ws.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "Lỗi hệ thống khi lưu đơn." }] } }));
         }
+      } 
+      else if (message.method === 'tools/call' && message.params?.name === 'update_voice_order') {
+        const rawArguments = message.params?.arguments || {};
+        const tableNumber = rawArguments.tableNumber;
+        const items = rawArguments.items || [];
+        
+        try {
+          const orderItems = [];
+          for (const rawItem of items) {
+            const menuItem = await findMenuItemByName(rawItem.itemName);
+            if (menuItem) {
+              orderItems.push({ id: menuItem.id, name: menuItem.name, quantity: Number(rawItem.quantity || 1), price: Number(menuItem.price) });
+            }
+          }
+
+          await modifyOrderRecord({ tableNumber: String(tableNumber), items: orderItems });
+          
+          ws.send(JSON.stringify({
+            jsonrpc: "2.0", id: message.id, 
+            result: { content: [{ type: "text", text: `Đổi món thành công. Hãy báo khách: "Dạ vâng, em đã cập nhật lại đơn cho mình rồi ạ!"` }] }
+          }));
+
+        } catch (error) {
+          if (error.message === "TOO_LATE") {
+            ws.send(JSON.stringify({
+              jsonrpc: "2.0", id: message.id, 
+              result: { content: [{ type: "text", text: "Báo khách khéo léo: Dạ món của mình quầy đã pha xong mất rồi, em không đổi được nữa, anh chị thông cảm nhé!" }] }
+            }));
+          } else {
+            ws.send(JSON.stringify({ jsonrpc: "2.0", id: message.id, result: { content: [{ type: "text", text: "Lỗi hệ thống khi sửa đơn." }] } }));
+          }
+        }
       }
-    } catch (error) { console.error('Lỗi JSON:', error); }
+    } catch (error) { 
+      console.error('Lỗi JSON:', error); 
+    }
   });
 
   ws.on('close', () => {
@@ -462,6 +491,9 @@ function connectXiaoZhi(url, index) {
   ws.on('error', (err) => console.error(`Lỗi WebSocket Bàn ${index + 1}:`, err.message));
 }
 
+// =========================================================
+// 🚀 KHỞI ĐỘNG HỆ THỐNG
+// =========================================================
 async function startServer() {
   try {
     await connectDatabase()
@@ -502,17 +534,9 @@ async function startServer() {
               io.emit('order:updated', updatedOrder);
 
               if (updatedOrder.table_number) {
-                await publishTableNotification(updatedOrder.table_number, { 
-                  event: 'order_updated', 
-                  order: updatedOrder 
-                });
-
-                // 🚀 CHỈ GỌI FIREBASE KHI TRẠNG THÁI LÀ 'ready' (PHA XONG)
-                if (newStatus === 'ready') {
-                  triggerFirebaseBell(updatedOrder.table_number);
-                }
+                await publishTableNotification(updatedOrder.table_number, { event: 'order_updated', order: updatedOrder });
+                if (newStatus === 'ready') { triggerFirebaseBell(updatedOrder.table_number); }
               }
-              console.log(`✅ Đồng bộ từ phần cứng quầy: Đơn ${orderIdOrNum} chuyển thành "${newStatus}"`);
             }
           }
         } catch (e) {
@@ -523,7 +547,6 @@ async function startServer() {
 
     server.listen(BACKEND_PORT, () => {
       console.log(`Backend Hub running on http://localhost:${BACKEND_PORT}`)
-      
       XIAO_ZHI_WSS_URLS.forEach((url, index) => {
         if (url && url.includes('token=')) { connectXiaoZhi(url, index) }
       });

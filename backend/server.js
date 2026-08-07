@@ -215,22 +215,18 @@ async function createOrderRecord({ tableNumber, items, note }) {
 // 🚀 HÀM ĐỔI/CẬP NHẬT ĐƠN HÀNG KHI KHÁCH ĐỔI Ý (DÀNH CHO AI)
 // =========================================================
 async function modifyOrderRecord({ tableNumber, items }) {
-  // 🚀 SỬA LẠI: Lấy tất cả các đơn chưa hoàn thành của bàn này
   const [rows] = await pool.query(
     `SELECT * FROM orders WHERE table_number = ? AND status IN ('pending', 'preparing') ORDER BY created_at DESC`,
     [tableNumber]
   );
 
   if (rows.length === 0) {
-    // Nếu không có đơn nào đang làm, tự động chuyển sang TẠO ĐƠN MỚI luôn cho mượt
     return await createOrderRecord({ tableNumber, items, note: 'Khách gọi qua AI (Tự động tạo mới)' });
   }
 
-  // Lấy đơn MỚI NHẤT (Đơn trên cùng)
   const order = rows[0];
   const orderId = order.id;
 
-  // 🧹 NẾU CÓ NHIỀU ĐƠN CŨ DƯ THỪA, GỘP HOẶC XÓA BỚT ĐỂ TRÁNH RỐC RÁC TRÊN DASHBOARD
   if (rows.length > 1) {
     for (let i = 1; i < rows.length; i++) {
       await pool.query(`DELETE FROM order_details WHERE order_id = ?`, [rows[i].id]);
@@ -238,7 +234,6 @@ async function modifyOrderRecord({ tableNumber, items }) {
     }
   }
 
-  // Xóa chi tiết món cũ của đơn mới nhất để nạp danh sách món mới do khách vừa thay đổi
   await pool.query(`DELETE FROM order_details WHERE order_id = ?`, [orderId]);
 
   if (!items || items.length === 0) {
@@ -288,7 +283,7 @@ async function fetchOrders() {
 }
 
 // =========================================================
-// CÁC ĐƯỜNG DẪN API HTTP CỦA DASHBOARD
+// CÁC ĐƯỜNG DẪN API HTTP CỦA DASHBOARD & WEB BÀN
 // =========================================================
 app.get('/api/menu', async (req, res) => {
   try { const [rows] = await pool.query('SELECT * FROM menu ORDER BY category, name'); res.json(rows) } 
@@ -299,6 +294,38 @@ app.get('/api/orders', async (req, res) => {
   try { const orders = await fetchOrders(); res.json(orders) } 
   catch (error) { res.status(500).json({ error: 'Không thể lấy danh sách đơn hàng' }) }
 })
+
+// 🚀 API LẤY ĐƠN HÀNG CHƯA HOÀN THÀNH CỦA BÀN (GIÚP KHÁCH F5 HOẶC THOÁT RA VÀO LẠI KHÔNG BỊ MẤT ĐƠN)
+app.get('/api/table/:tableNumber/active-order', async (req, res) => {
+  try {
+    const { tableNumber } = req.params;
+    const [rows] = await pool.query(
+      `SELECT * FROM orders WHERE table_number = ? AND status != 'completed' ORDER BY created_at DESC LIMIT 1`,
+      [tableNumber]
+    );
+
+    if (rows.length === 0) {
+      return res.json({ order: null });
+    }
+
+    const order = rows[0];
+    const [details] = await pool.query(`SELECT * FROM order_details WHERE order_id = ?`, [order.id]);
+    
+    const fullOrder = {
+      ...order,
+      items: details.map((detail) => ({
+        id: detail.menu_item_id,
+        name: detail.menu_item_name,
+        quantity: detail.quantity,
+        price: parseFloat(detail.price)
+      }))
+    };
+
+    res.json({ order: fullOrder });
+  } catch (error) {
+    res.status(500).json({ error: 'Không thể lấy thông tin đơn hàng của bàn' });
+  }
+});
 
 app.post('/api/order', async (req, res) => {
   try {
@@ -333,7 +360,6 @@ app.post('/api/order/:orderId/complete', async (req, res) => {
     
     if (tableNumber) {
       await publishTableNotification(tableNumber, { event: 'order_completed', orderId: Number(orderId) })
-      // ❌ ĐÃ XÓA triggerFirebaseBell Ở ĐÂY ĐỂ ĐÓNG BÀN KHÔNG BAO GIỜ KÊU CÒI NỮA
     }
     res.json({ success: true })
   } catch (error) { res.status(500).json({ error: 'Không thể cập nhật đơn hàng' }) }
@@ -349,7 +375,6 @@ const updateStatusHandler = async (req, res) => {
 
     if (order && order.table_number) {
       await publishTableNotification(order.table_number, { event: 'order_updated', order: order });
-      // CHỈ GỌI CÒI NẾU TRẠNG THÁI LÀ READY
       if (status === 'ready') { triggerFirebaseBell(order.table_number); }
     }
     res.json({ success: true });

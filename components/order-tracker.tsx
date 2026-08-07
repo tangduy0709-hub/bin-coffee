@@ -23,7 +23,6 @@ export function OrderTracker() {
   
   const audioRef = useRef<HTMLAudioElement | null>(null)
   
-  // 🚀 Dùng ref để lưu state, giúp Socket không bị ngắt kết nối liên tục khi React render lại
   const currentOrderRef = useRef(currentOrder)
   useEffect(() => {
     currentOrderRef.current = currentOrder
@@ -40,13 +39,32 @@ export function OrderTracker() {
     }
   }
 
-  // Lắng nghe socket 24/7 (KHÔNG phụ thuộc vào việc có đơn hay chưa)
-  // Lắng nghe socket 24/7 (Cập nhật cả trạng thái lẫn danh sách món khi AI sửa đơn)
-  // Lắng nghe socket 24/7 cho đúng số bàn hiện tại
+  // 🚀 1. TỰ ĐỘNG KHÔI PHỤC ĐƠN HÀNG CŨ KHI KHÁCH F5 HOẶC VÀO LẠI TRANG
+  useEffect(() => {
+    async function checkActiveOrder() {
+      try {
+        const pathParts = window.location.pathname.split('/').filter(Boolean)
+        const currentTable = pathParts[pathParts.length - 1]
+        
+        if (currentTable) {
+          const res = await fetch(`${BACKEND_URL}/api/table/${currentTable}/active-order`);
+          const data = await res.json();
+          if (data.order) {
+            console.log("🔄 Đã khôi phục đơn cũ cho bàn:", data.order);
+            setOrder(data.order); 
+          }
+        }
+      } catch (err) {
+        console.log("Chưa có đơn hàng nào cần khôi phục.");
+      }
+    }
+    checkActiveOrder();
+  }, [setOrder]);
+
+  // 🚀 2. LẮNG NGHE SOCKET CẬP NHẬT REALTIME
   useEffect(() => {
     const socket = io(BACKEND_URL)
 
-    // Trích xuất số bàn từ URL (VD: /table/2 -> Lấy số 2)
     const pathParts = window.location.pathname.split('/').filter(Boolean)
     const currentTable = pathParts[pathParts.length - 1]
 
@@ -54,12 +72,10 @@ export function OrderTracker() {
       console.log(`✅ Kết nối Socket thành công cho Bàn số: ${currentTable}`);
     })
 
-    // KHI CÓ BẤT KỲ CẬP NHẬT NÀO (Tạo mới, Sửa món, Đổi trạng thái)
     socket.on('order:updated', (updatedOrder) => {
       if (updatedOrder && String(updatedOrder.table_number) === String(currentTable)) {
         console.log('🔄 Nhận dữ liệu đơn hàng mới từ server/AI:', updatedOrder);
         
-        // 🚀 BẮT BUỘC GÁN LẠI ĐƠN HÀNG NGAY LẬP TỨC CHO GIAO DIỆN TỰ ĐỔI
         setOrder(updatedOrder);
 
         setNotificationMsg({ 
@@ -71,7 +87,6 @@ export function OrderTracker() {
       }
     });
 
-    // Trường hợp tạo đơn hoàn toàn mới
     socket.on('order:new', (newOrder) => {
       if (newOrder && String(newOrder.table_number) === String(currentTable)) {
         setOrder(newOrder);
@@ -86,7 +101,6 @@ export function OrderTracker() {
     }
   }, [setOrder])
 
-  // HIỂN THỊ GIAO DIỆN (Nếu chưa có đơn thì ẨN UI, nhưng Hook Socket ở trên VẪN CHẠY NGẦM)
   if (!currentOrder) return null
 
   const currentStepIndex = statusSteps.findIndex(step => step.status === currentOrder.status)
@@ -173,7 +187,8 @@ export function OrderTracker() {
 
 function StatusBadge({ status }: { status: Order['status'] }) {
   const styles = { pending: 'bg-secondary text-secondary-foreground', preparing: 'bg-accent/20 text-accent', ready: 'bg-primary/20 text-primary', completed: 'bg-muted text-muted-foreground' }
-  const labels = { pending: 'Chờ nhận', preparing: 'Đang pha chế', ready: 'Xong', completed: 'Hoàn thành' }
+  // 🚀 Đổi nhãn 'Chờ nhận' thành 'Đang xử lý' cho khách dễ hiểu
+  const labels = { pending: 'Đang xử lý', preparing: 'Đang pha chế', ready: 'Xong', completed: 'Hoàn thành' }
   return (
     <span className={`rounded-full px-3 py-1 text-xs font-medium ${styles[status]}`}>{labels[status]}</span>
   )

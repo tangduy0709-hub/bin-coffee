@@ -360,7 +360,14 @@ function connectXiaoZhi(url, index) {
           result: { 
             tools: [{ 
               name: "create_voice_order", 
-              description: "Tạo đơn hàng gồm nhiều món. Gửi theo mẫu JSON: {\"tableNumber\":\"1\",\"items\":[{\"itemName\":\"Cà Phê Đá\",\"quantity\":2}]}", 
+              
+              // 🚀 ĐÃ SỬA LẠI ĐOẠN MÔ TẢ (DESCRIPTION) ĐỂ "DẠY" AI CÁCH LÀM VIỆC
+              description: `HÀM CHỐT ĐƠN CUỐI CÙNG. QUY TRÌNH BẮT BUỘC: 
+              1. Khi khách gọi món, chỉ ghi nhớ trong đầu và xác nhận lại bằng lời nói (VD: "Dạ anh gọi 1 cafe đá, anh có muốn gọi thêm gì không ạ?"). 
+              2. Nếu khách muốn ĐỔI hoặc BỎ món, hãy tự cập nhật lại danh sách trong đầu và hỏi lại khách. 
+              3. TUYỆT ĐỐI CHỈ GỌI HÀM NÀY KHI KHÁCH ĐÃ NÓI TỪ KHÓA XÁC NHẬN (VD: "Ok", "Chốt đơn", "Đủ rồi", "Nhiêu đó thôi").
+              Gửi theo mẫu JSON: {"tableNumber":"1","items":[{"itemName":"Cà Phê Đá","quantity":2}]}`, 
+              
               inputSchema: { 
                 type: "object", 
                 properties: { 

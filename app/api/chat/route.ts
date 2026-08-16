@@ -204,8 +204,9 @@ export async function POST(req: Request) {
     // NẾU CHỈ LÀ TRÒ CHUYỆN BÌNH THƯỜNG (Tư vấn, hỏi đáp)
     return NextResponse.json({ reply: response.text(), action: 'chat' });
 
-  } catch (error) {
-    console.error('Lỗi API:', error);
-    return NextResponse.json({ reply: 'Hệ thống đang bảo trì một chút, anh/chị thao tác trực tiếp trên menu giúp em nhé.' }, { status: 500 });
+  } catch (error: any) {
+    console.error('Lỗi API Chat:', error);
+    // 🚀 Đưa thẳng lỗi thật ra đây để nhìn thấy trên giao diện web
+    return NextResponse.json({ reply: `Chi tiết lỗi code: ${error.message}` });
   }
 }

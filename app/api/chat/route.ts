@@ -97,16 +97,53 @@ export async function POST(req: Request) {
     if (functionCalls && functionCalls.length > 0) {
       const call = functionCalls[0];
 
-      // --- TRƯỜNG HỢP 1: ĐẶT MÓN MỚI ---
+      // --- TRƯỜNG HỢP 1: ĐẶT MÓN MỚI (ĐÃ ĐƯỢC CHUẨN HÓA DỮ LIỆU) ---
       if (call.name === 'createOrder') {
-        const items = (call.args as any).items; 
-        const backendRes = await fetch('https://bin-coffee.onrender.com/api/order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tableNumber, items, note: 'AI Chốt Đơn' }),
-        });
-        if (backendRes.ok) {
-          return NextResponse.json({ reply: 'Dạ, đơn hàng của mình đã được chuyển xuống bếp pha chế rồi ạ! Quý khách đợi một lát nhé.', action: 'order_created' });
+        const rawItems = (call.args as any).items; 
+        
+        try {
+          // 1. Lấy menu từ Backend về để chuẩn hóa tên món, lấy ID và Price chính xác
+          const menuRes = await fetch('https://bin-coffee.onrender.com/api/menu');
+          const menuItems = await menuRes.json();
+
+          const formattedItems = [];
+          for (const raw of rawItems) {
+            // Tìm món trong menu (khớp chuỗi tương đối)
+            const matched = menuItems.find((m: any) => 
+              m.name.toLowerCase().includes(raw.name.toLowerCase()) ||
+              raw.name.toLowerCase().includes(m.name.toLowerCase())
+            );
+
+            if (matched) {
+              formattedItems.push({
+                id: matched.id,
+                name: matched.name,
+                quantity: raw.quantity || 1,
+                price: Number(matched.price),
+                customizations: raw.customizations || null
+              });
+            }
+          }
+
+          if (formattedItems.length === 0) {
+            return NextResponse.json({ reply: 'Dạ quán không tìm thấy món bạn vừa chọn trong menu, bạn chọn lại món khác giúp em nhé!' });
+          }
+
+          // 2. Gửi đơn hàng chuẩn đã có ID và Price xuống Backend
+          const backendRes = await fetch('https://bin-coffee.onrender.com/api/order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tableNumber, items: formattedItems, note: 'AI Chat Chốt Đơn' }),
+          });
+
+          if (backendRes.ok) {
+            return NextResponse.json({ reply: 'Dạ, đơn hàng của mình đã được chuyển xuống bếp pha chế rồi ạ! Quý khách đợi một lát nhé 🥰', action: 'order_created' });
+          } else {
+            throw new Error("Lưu đơn thất bại");
+          }
+        } catch (error) {
+          console.error("Lỗi khi đồng bộ đơn với Backend:", error);
+          return NextResponse.json({ reply: 'Dạ hệ thống đặt món đang bị gián đoạn đôi chút, bạn chờ em kiểm tra lại nha!' });
         }
       }
 

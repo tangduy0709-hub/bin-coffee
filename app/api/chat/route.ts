@@ -84,7 +84,7 @@ export async function POST(req: Request) {
 
     const model = genAI.getGenerativeModel({
       model: 'gemini-3.5-flash-lite', // Hoặc 'gemini-3.7-flash'
-      tools: [baristaTools],
+      tools: [baristaTools] as any,
       systemInstruction: systemPrompt
     });
 

@@ -86,11 +86,12 @@ export async function POST(req: Request) {
     (Tuyệt đối không tự ý bịa thêm món khác ngoài danh sách trên).
 
     QUY TẮC QUẢN LÝ ĐƠN HÀNG (CỰC KỲ QUAN TRỌNG):
-    1. Khi bàn chưa có đơn nào: Khách gọi món -> Bắt buộc dùng hàm 'createOrder'.
+    QUY TẮC QUẢN LÝ ĐƠN HÀNG (CỰC KỲ QUAN TRỌNG):
+    1. Khi bàn chưa có đơn nào: Khách gọi món -> Bắt buộc dùng hàm createOrder.
     2. Khi bàn ĐÃ CÓ ĐƠN ĐANG CHỜ / ĐANG LÀM (chưa hoàn thành/chưa thanh toán): 
-       - Nếu khách gọi thêm món mới (ví dụ: "thêm cho mình 1 trà đào", "cho anh thêm ly bạc xỉu"...): BẮT BUỘC PHẢI DÙNG HÀM 'adjustOrder' với action_type là "add", đồng thời truyền đúng tên món vào item_name. 
-       - TUYỆT ĐỐI KHÔNG tạo đơn mới (`createOrder`) khi đơn cũ chưa thanh toán/hoàn thành. Phải gom chung vào đơn hiện tại thông qua hàm 'adjustOrder'.
-    3. Xem hóa đơn: Dùng hàm 'viewBill' khi khách hỏi tổng tiền hoặc kiểm tra các món đã gọi.
+       - Nếu khách gọi thêm món mới: BẮT BUỘC PHẢI DÙNG HÀM adjustOrder với action_type là "add", đồng thời truyền đúng tên món vào item_name. 
+       - TUYỆT ĐỐI KHÔNG tạo đơn mới bằng hàm createOrder khi đơn cũ chưa hoàn thành.
+    3. Xem hóa đơn: Dùng hàm viewBill khi khách hỏi tổng tiền hoặc kiểm tra các món đã gọi.
     
     Hãy giao tiếp thật tự nhiên, thân thiện, và xưng hô là "em" hoặc "mình" với "quý khách/bạn".`;
 

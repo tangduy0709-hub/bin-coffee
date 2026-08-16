@@ -83,7 +83,7 @@ export async function POST(req: Request) {
     Hãy giao tiếp thật tự nhiên, thân thiện, và xưng hô là "em" hoặc "mình" với "quý khách/bạn".`;
 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.5-flash-lite', // Hoặc 'gemini-3.7-flash'
       tools: [baristaTools],
       systemInstruction: systemPrompt
     });

@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import toast, { Toaster } from 'react-hot-toast';
-import client from '@/lib/mqttClient'
 import { io } from 'socket.io-client' // 🚀 THÊM SOCKET.IO ĐỂ ĐỒNG BỘ REALTIME
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { LayoutDashboard, History, LayoutGrid, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { BACKEND_URL, updateOrderStatus, updatePaymentStatus } from '@/lib/backend'
 import { formatVND } from '@/lib/utils'
+import client from '@/lib/mqttClient'; 
 
 const boDauTiengViet = (str: string) => {
   if (!str) return "";
@@ -235,9 +235,13 @@ export default function DashboardPage() {
       setOrders((prev) => {
         // Tránh trùng lặp
         if (prev.some((o) => String(o.id) === String(newOrder.id))) return prev;
-        toast.success(`📥 Có đơn mới từ Bàn ${newOrder.table_number}!`);
+        
+        // 🚀 Bỏ toast ra khỏi đây để tránh lỗi render
         return [newOrder, ...prev];
       });
+
+      // Đưa toast ra ngoài setState
+      toast.success(`📥 Có đơn mới từ Bàn ${newOrder.table_number}!`);
     });
 
     // KHI ĐƠN BỊ THAY ĐỔI (Thanh toán, Trạng thái...)
@@ -407,15 +411,50 @@ export default function DashboardPage() {
                         )}
                         
                         {order.status === 'preparing' && (
-                          <Button size="sm" onClick={() => updateOrderStatus(order.id, 'ready').then(() => {
-                              setOrders((prev) => prev.map((item) => String(item.id) === String(order.id) ? { ...item, status: 'ready' } : item))
-                              
-                              const matchSoBan = String(order.table_number).match(/\d+/);
-                              const soBanFirebase = matchSoBan ? matchSoBan[0] : "1";
-                              handleGoiKhach(soBanFirebase);
-                              
-                              toast.success(`Đã phát thông báo còi cho bàn ${order.table_number}!`);
-                            })}>
+                          <Button size="sm" onClick={async () => {
+                            // 1. Cập nhật trạng thái đơn hàng trên Backend thành "ready"
+                            await updateOrderStatus(order.id, 'ready');
+                            setOrders((prev) => prev.map((item) => String(item.id) === String(order.id) ? { ...item, status: 'ready' } : item));
+                            
+                            // Lấy số bàn
+                            const matchSoBan = String(order.table_number).match(/\d+/);
+                            const soBanNum = matchSoBan ? matchSoBan[0] : "1";
+
+                            // =========================================================
+                            // 2. GỬI TÍN HIỆU MQTT CHO AI XIAOZHI (ESP32-S3) ĐỌC LOA
+                            // =========================================================
+                            const payloadMQTT = JSON.stringify({
+                              order_number: order.order_number,
+                              table: `Ban ${soBanNum}`,
+                              message: `Mời khách hàng tại bàn ${soBanNum} ra quầy nhận món`
+                            });
+
+                            client.publish('coffee/ready_announcement', payloadMQTT, { qos: 0 }, (err) => {
+                              if (!err) {
+                                toast.success(`📢 Đã gửi thông báo cho AI tại Bàn ${soBanNum}!`);
+                              } else {
+                                toast.error("❌ Gửi tín hiệu MQTT thất bại!");
+                              }
+                            });
+
+                            // =========================================================
+                            // 3. GỬI TÍN HIỆU FIREBASE ĐỂ MẠCH KÝ SINH (ESP32-C3) HÚ CÒI
+                            // =========================================================
+                            try {
+                              await fetch('https://cafe-thong-bao-default-rtdb.firebaseio.com/thong_bao.json', {
+                                method: "PUT",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                  ban: soBanNum,
+                                  trang_thai: "READY",
+                                  thoi_gian: Date.now()
+                                }),
+                              });
+                              // Không cần hiện thêm toast nữa vì MQTT ở trên đã hiện rồi để tránh rác màn hình
+                            } catch (error) {
+                              console.error("❌ Lỗi kích hoạt còi Firebase:", error);
+                            }
+                          }}>
                             Pha xong (Bưng ra bàn)
                           </Button>
                         )}

@@ -63,14 +63,26 @@ export function MenuCard({ item, index }: MenuCardProps) {
   }
 
   const getSugarLabel = (option: 'none' | 'light' | 'normal' | 'extra') => {
+    // Nếu là món có sữa (Cà Phê Sữa, Bạc Xỉu) thì đổi nhãn thành "sữa"
+    if (isMilkBasedDrink) {
+      return option === 'none'
+        ? 'Không sữa'
+        : option === 'light'
+          ? 'Ít sữa'
+          : option === 'normal'
+            ? 'Vừa sữa'
+            : 'Nhiều sữa';
+    }
+
+    // Các món khác giữ nguyên nhãn "đường"
     return option === 'none'
       ? 'Không đường'
       : option === 'light'
         ? 'Ít đường'
         : option === 'normal'
           ? 'Vừa đường'
-          : 'Nhiều đường'
-  }
+          : 'Nhiều đường';
+  };
 
   const handleAddItem = () => {
     const customizations =

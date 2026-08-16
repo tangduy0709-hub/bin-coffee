@@ -11,7 +11,7 @@ const baristaTools = {
     // Tool 1: Đặt món mới
     {
       name: 'createOrder',
-      description: 'Dùng khi khách hàng gọi món mới, đặt thêm đồ uống.',
+      description: 'Dùng khi khách hàng gọi món lần đầu tiên.',
       parameters: {
         type: SchemaType.OBJECT,
         properties: {
@@ -37,17 +37,17 @@ const baristaTools = {
         required: ["items"],
       },
     },
-    // Tool 2: Điều chỉnh đơn hàng (Thêm, bớt, đổi, hủy)
-    {{
+    // Tool 2: Điều chỉnh đơn hàng / Thêm món
+    {
       name: 'adjustOrder',
-      description: 'Dùng khi khách muốn thêm món mới vào đơn hiện tại, hoặc đổi/hủy món.',
+      description: 'Dùng khi bàn đã có đơn mà khách muốn gọi thêm nước mới, hoặc đổi/hủy món.',
       parameters: {
         type: SchemaType.OBJECT,
         properties: {
           action_type: { type: SchemaType.STRING, description: '"add" nếu thêm món, hoặc "cancel_modify" nếu hủy/đổi món' },
           item_name: { type: SchemaType.STRING, description: 'Tên món muốn thêm (nếu có)' },
           quantity: { type: SchemaType.NUMBER, description: 'Số lượng món muốn thêm' },
-          request_details: { type: SchemaType.STRING, description: 'Mô tả chi tiết yêu cầu' }
+          request_details: { type: SchemaType.STRING, description: 'Mô tả chi tiết yêu cầu của khách' }
         },
         required: ["action_type", "request_details"],
       },
@@ -58,7 +58,7 @@ const baristaTools = {
       description: 'Dùng khi khách hỏi "Tôi đã gọi gì?", "Tổng tiền bao nhiêu?", hoặc yêu cầu tính tiền/xem hóa đơn.',
       parameters: {
         type: SchemaType.OBJECT,
-        properties: {}, // Không cần tham số vì mình tự lấy theo tableNumber
+        properties: {},
       },
     }
   ],
@@ -86,15 +86,15 @@ export async function POST(req: Request) {
     (Tuyệt đối không tự ý bịa thêm món khác ngoài danh sách trên).
 
     NHIỆM VỤ VÀ QUY TẮC:
-    1. ĐẶT MÓN MỚI (createOrder): Dùng khi khách gọi món lần đầu. Bắt buộc trích xuất customizations (ice, sugar) theo các chữ: "none", "light", "normal", "extra".
-    2. GỌI THÊM / ĐIỀU CHỈNH (adjustOrder): Nếu khách đã gọi món trước đó và giờ gọi thêm nước mới (ví dụ: "thêm cho mình 1 bạc xỉu"), BẮT BUỘC DÙNG HÀM NÀY để gửi yêu cầu gộp thêm vào đơn hiện tại, không tạo đơn mới hoàn toàn!
+    1. ĐẶT MÓN MỚI (createOrder): Dùng khi bàn chưa hề có đơn nào và khách gọi món lần đầu. Bắt buộc trích xuất customizations (ice, sugar) theo các chữ: "none", "light", "normal", "extra".
+    2. GỌI THÊM / ĐIỀU CHỈNH (adjustOrder): Nếu khách đã có đơn trước đó và giờ gọi thêm nước mới (ví dụ: "thêm cho mình 2 cà phê sữa"), BẮT BUỘC DÙNG HÀM NÀY với action_type là "add" để hệ thống gộp thẳng vào đơn cũ!
     3. XEM HÓA ĐƠN (viewBill): Dùng khi khách muốn kiểm tra lại các món đã gọi hoặc hỏi tổng tiền.
-    4. TƯ VẤN THEO NGỮ CẢNH: Gợi ý các món trong menu sao cho phù hợp (Sáng ưu tiên Cà phê đá/sữa/bạc xỉu để tỉnh táo; Trưa/Chiều/Tối ưu tiên Trà đào hoặc Nước cam thanh mát).
+    4. TƯ VẤN THEO NGỮ CẢNH: Gợi ý các món trong menu sao cho phù hợp.
     
     Hãy giao tiếp thật tự nhiên, thân thiện, và xưng hô là "em" hoặc "mình" với "quý khách/bạn".`;
 
     const model = genAI.getGenerativeModel({
-      model: 'gemini-3.5-flash-lite', // Hoặc 'gemini-3.7-flash'
+      model: 'gemini-3.5-flash-lite',
       tools: [baristaTools] as any,
       systemInstruction: systemPrompt
     });
@@ -108,18 +108,16 @@ export async function POST(req: Request) {
     if (functionCalls && functionCalls.length > 0) {
       const call = functionCalls[0];
 
-      // --- TRƯỜNG HỢP 1: ĐẶT MÓN MỚI (ĐÃ ĐƯỢC CHUẨN HÓA DỮ LIỆU) ---
+      // --- TRƯỜNG HỢP 1: ĐẶT MÓN MỚI ---
       if (call.name === 'createOrder') {
         const rawItems = (call.args as any).items; 
         
         try {
-          // 1. Lấy menu từ Backend về để chuẩn hóa tên món, lấy ID và Price chính xác
           const menuRes = await fetch('https://bin-coffee.onrender.com/api/menu');
           const menuItems = await menuRes.json();
 
           const formattedItems = [];
           for (const raw of rawItems) {
-            // Tìm món trong menu (khớp chuỗi tương đối)
             const matched = menuItems.find((m: any) => 
               m.name.toLowerCase().includes(raw.name.toLowerCase()) ||
               raw.name.toLowerCase().includes(m.name.toLowerCase())
@@ -140,7 +138,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ reply: 'Dạ quán không tìm thấy món bạn vừa chọn trong menu, bạn chọn lại món khác giúp em nhé!' });
           }
 
-          // 2. Gửi đơn hàng chuẩn đã có ID và Price xuống Backend
           const backendRes = await fetch('https://bin-coffee.onrender.com/api/order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -158,28 +155,74 @@ export async function POST(req: Request) {
         }
       }
 
-      // --- TRƯỜNG HỢP 2: ĐIỀU CHỈNH / HỦY MÓN ---
+      // --- TRƯỜNG HỢP 2: ĐIỀU CHỈNH / THÊM MÓN VÀO ĐƠN CŨ ---
       if (call.name === 'adjustOrder') {
-        const { request_details } = call.args as any;
-        // Bắn 1 order khẩn cấp xuống bếp với items rỗng nhưng có note đỏ để bếp chú ý xử lý
+        const { action_type, item_name, quantity, request_details } = call.args as any;
+        
+        try {
+          // 1. Tìm đơn hàng hiện tại chưa thanh toán của bàn
+          const ordersRes = await fetch(`https://bin-coffee.onrender.com/api/orders`);
+          if (ordersRes.ok) {
+            const allOrders = await ordersRes.json();
+            const activeOrder = allOrders.find((o: any) => 
+              String(o.table_number).match(/\d+/)?.[0] === String(tableNumber) && 
+              o.payment_status !== 'paid'
+            );
+
+            // Nếu là hành động thêm món và bàn đang có đơn active
+            if (action_type === 'add' && activeOrder && item_name) {
+              const menuRes = await fetch('https://bin-coffee.onrender.com/api/menu');
+              const menuItems = await menuRes.json();
+
+              const matchedItem = menuItems.find((m: any) => 
+                m.name.toLowerCase().includes(item_name.toLowerCase()) ||
+                item_name.toLowerCase().includes(m.name.toLowerCase())
+              );
+
+              if (matchedItem) {
+                // Gọi API thêm trực tiếp món vào order hiện tại trên backend
+                const addRes = await fetch(`https://bin-coffee.onrender.com/api/orders/${activeOrder.id}/items`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    menu_item_id: matchedItem.id,
+                    quantity: quantity || 1,
+                    price: Number(matchedItem.price)
+                  }),
+                });
+
+                if (addRes.ok) {
+                  return NextResponse.json({ 
+                    reply: `Dạ em đã tự động thêm "${matchedItem.name}" vào đơn hàng hiện tại của bàn mình rồi ạ! Bếp đang chuẩn bị ngay cho mình nhé 🥰`, 
+                    action: 'order_adjusted' 
+                  });
+                }
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Lỗi gộp thêm món tự động:", err);
+        }
+
+        // 2. Dự phòng: Nếu không tìm thấy đơn hoặc là hủy/đổi món phức tạp, bắn note khẩn cấp xuống bếp
         await fetch('https://bin-coffee.onrender.com/api/order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ tableNumber, items: [], note: `🔴 KHÁCH ĐIỀU CHỈNH: ${request_details}` }),
         });
+
         return NextResponse.json({ 
-          reply: `Dạ em đã ghi nhận yêu cầu điều chỉnh: "${request_details}". Em đã báo khẩn cấp xuống quầy pha chế xử lý ngay cho mình rồi ạ!`, 
+          reply: `Dạ em đã ghi nhận yêu cầu: "${request_details}". Em đã báo khẩn cấp xuống quầy pha chế xử lý ngay cho mình rồi ạ!`, 
           action: 'order_adjusted' 
         });
       }
 
-      // --- TRƯỜNG HỢP 3: XEM HÓA ĐƠN TRỰC TIẾP TRONG CHAT ---
+      // --- TRƯỜNG HỢP 3: XEM HÓA ĐƠN ---
       if (call.name === 'viewBill') {
         try {
           const res = await fetch(`https://bin-coffee.onrender.com/api/orders`);
           if (res.ok) {
             const allOrders = await res.json();
-            // Lọc ra các đơn của Bàn hiện tại và Chưa thanh toán
             const tableOrders = allOrders.filter((o: any) => 
               String(o.table_number).match(/\d+/)?.[0] === String(tableNumber) && 
               o.payment_status !== 'paid'
@@ -189,7 +232,6 @@ export async function POST(req: Request) {
               return NextResponse.json({ reply: 'Dạ hiện tại bàn mình chưa có hóa đơn nào chưa thanh toán ạ.' });
             }
 
-            // Tạo chuỗi hóa đơn để in ra chat
             let billText = `🧾 **HÓA ĐƠN BÀN ${tableNumber}**\n\n`;
             let totalAmount = 0;
 
@@ -212,12 +254,11 @@ export async function POST(req: Request) {
       }
     }
 
-    // NẾU CHỈ LÀ TRÒ CHUYỆN BÌNH THƯỜNG (Tư vấn, hỏi đáp)
+    // NẾU CHỈ LÀ TRÒ CHUYỆN BÌNH THƯỜNG
     return NextResponse.json({ reply: response.text(), action: 'chat' });
 
   } catch (error: any) {
     console.error('Lỗi API Chat:', error);
-    // 🚀 Đưa thẳng lỗi thật ra đây để nhìn thấy trên giao diện web
     return NextResponse.json({ reply: `Chi tiết lỗi code: ${error.message}` });
   }
 }

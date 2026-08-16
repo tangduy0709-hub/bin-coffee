@@ -38,18 +38,18 @@ const baristaTools = {
       },
     },
     // Tool 2: Điều chỉnh đơn hàng (Thêm, bớt, đổi, hủy)
-    {
+    {{
       name: 'adjustOrder',
-      description: 'Dùng khi khách yêu cầu thay đổi (hủy món, bớt món, đổi món, đổi lượng đá/đường) của các món ĐÃ ĐẶT.',
+      description: 'Dùng khi khách muốn thêm món mới vào đơn hiện tại, hoặc đổi/hủy món.',
       parameters: {
         type: SchemaType.OBJECT,
         properties: {
-          request_details: { 
-            type: SchemaType.STRING, 
-            description: 'Tóm tắt yêu cầu điều chỉnh (Ví dụ: "Hủy ly bạc xỉu", "Đổi ly cà phê sang ít đá")' 
-          }
+          action_type: { type: SchemaType.STRING, description: '"add" nếu thêm món, hoặc "cancel_modify" nếu hủy/đổi món' },
+          item_name: { type: SchemaType.STRING, description: 'Tên món muốn thêm (nếu có)' },
+          quantity: { type: SchemaType.NUMBER, description: 'Số lượng món muốn thêm' },
+          request_details: { type: SchemaType.STRING, description: 'Mô tả chi tiết yêu cầu' }
         },
-        required: ["request_details"],
+        required: ["action_type", "request_details"],
       },
     },
     // Tool 3: Xem hóa đơn / Tính tiền

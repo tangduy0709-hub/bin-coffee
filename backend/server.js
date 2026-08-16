@@ -84,16 +84,16 @@ function triggerFirebaseBell(tableNumber) {
 
 async function connectDatabase() {
   const maxAttempts = 5
-  const connectionString = process.env.DATABASE_URL;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      if (!connectionString) {
-        throw new Error("Chưa có biến DATABASE_URL. Hãy thêm biến này trên Render!");
-      }
-
+      // Dùng các biến môi trường riêng biệt thay vì uri để tránh lỗi ký tự đặc biệt
       pool = mysql.createPool({
-        uri: connectionString,
+        host: process.env.DATABASE_HOST,
+        user: process.env.DATABASE_USER,
+        password: process.env.DATABASE_PASSWORD,
+        port: process.env.DATABASE_PORT ? Number(process.env.DATABASE_PORT) : 10746,
+        database: process.env.DATABASE_NAME || 'coffee_shop',
         ssl: { rejectUnauthorized: false },
         waitForConnections: true,
         connectionLimit: 10,
@@ -106,6 +106,7 @@ async function connectDatabase() {
       console.log(`✅ Đã kết nối thành công tới Database Aiven Cloud!`);
       connection.release();
 
+      // ... (Giữ nguyên các câu lệnh CREATE TABLE ở dưới) ...
       await pool.query(`
         CREATE TABLE IF NOT EXISTS menu (
           id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(191) NOT NULL, description TEXT, price DECIMAL(10,2) NOT NULL,

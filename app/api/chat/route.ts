@@ -156,44 +156,46 @@ export async function POST(req: Request) {
       }
 
       // --- TRƯỜNG HỢP 2: ĐIỀU CHỈNH / THÊM MÓN VÀO ĐƠN CŨ ---
+      // --- TRƯỜNG HỢP 2: ĐIỀU CHỈNH / THÊM MÓN VÀO ĐƠN CŨ ---
       if (call.name === 'adjustOrder') {
-        const { action_type, item_name, quantity, request_details } = call.args as any;
+        const { request_details } = call.args as any;
+        const lowerReq = request_details.toLowerCase();
         
         try {
-          // 1. Tìm đơn hàng hiện tại chưa thanh toán của bàn
-          const ordersRes = await fetch(`https://bin-coffee.onrender.com/api/orders`);
-          if (ordersRes.ok) {
-            const allOrders = await ordersRes.json();
-            const activeOrder = allOrders.find((o: any) => 
-              String(o.table_number).match(/\d+/)?.[0] === String(tableNumber) && 
-              o.payment_status !== 'paid'
-            );
+          // 1. Lấy menu về trước để tra cứu tên món khách muốn thêm
+          const menuRes = await fetch('https://bin-coffee.onrender.com/api/menu');
+          const menuItems = await menuRes.json();
 
-            // Nếu là hành động thêm món và bàn đang có đơn active
-            if (action_type === 'add' && activeOrder && item_name) {
-              const menuRes = await fetch('https://bin-coffee.onrender.com/api/menu');
-              const menuItems = await menuRes.json();
+          // Dò xem trong câu yêu cầu có chứa tên món nào trong menu không (ví dụ: "trà đào", "bạc xỉu",...)
+          const matchedItem = menuItems.find((m: any) => 
+            lowerReq.includes(m.name.toLowerCase())
+          );
 
-              const matchedItem = menuItems.find((m: any) => 
-                m.name.toLowerCase().includes(item_name.toLowerCase()) ||
-                item_name.toLowerCase().includes(m.name.toLowerCase())
+          if (matchedItem) {
+            // 2. Lấy danh sách các đơn hàng để tìm đơn chưa thanh toán của bàn này
+            const ordersRes = await fetch(`https://bin-coffee.onrender.com/api/orders`);
+            if (ordersRes.ok) {
+              const allOrders = await ordersRes.json();
+              const activeOrder = allOrders.find((o: any) => 
+                String(o.table_number).match(/\d+/)?.[0] === String(tableNumber) && 
+                o.payment_status !== 'paid'
               );
 
-              if (matchedItem) {
-                // Gọi API thêm trực tiếp món vào order hiện tại trên backend
+              if (activeOrder) {
+                // 3. Gọi API thêm trực tiếp món vào order hiện tại trên backend
                 const addRes = await fetch(`https://bin-coffee.onrender.com/api/orders/${activeOrder.id}/items`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     menu_item_id: matchedItem.id,
-                    quantity: quantity || 1,
+                    quantity: 1, // Mặc định thêm 1 (hoặc bạn có thể bắt số lượng từ câu chat)
                     price: Number(matchedItem.price)
                   }),
                 });
 
                 if (addRes.ok) {
                   return NextResponse.json({ 
-                    reply: `Dạ em đã tự động thêm "${matchedItem.name}" vào đơn hàng hiện tại của bàn mình rồi ạ! Bếp đang chuẩn bị ngay cho mình nhé 🥰`, 
+                    reply: `Dạ em đã tự động thêm "${matchedItem.name}" vào đơn hàng hiện tại của bàn mình rồi ạ! Bếp đang chuẩn bị ngay nhé 🥰`, 
                     action: 'order_adjusted' 
                   });
                 }
@@ -204,7 +206,7 @@ export async function POST(req: Request) {
           console.error("Lỗi gộp thêm món tự động:", err);
         }
 
-        // 2. Dự phòng: Nếu không tìm thấy đơn hoặc là hủy/đổi món phức tạp, bắn note khẩn cấp xuống bếp
+        // 4. Nếu không tìm thấy tên món khớp trong menu hoặc không có đơn cũ thì gửi note dự phòng
         await fetch('https://bin-coffee.onrender.com/api/order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

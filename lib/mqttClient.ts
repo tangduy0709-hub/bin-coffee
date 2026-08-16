@@ -1,15 +1,14 @@
 import mqtt from 'mqtt';
 
-// Kết nối đến Mosquitto WebSocket công khai (Khớp với server của mạch Arduino)
-// Lưu ý: Phải dùng wss (bảo mật) và cổng 8081 dành riêng cho Web
-const client = mqtt.connect('wss://test.mosquitto.org:8081/mqtt', {
+// Sử dụng HiveMQ WebSocket (Ổn định và không bị chặn như Mosquitto)
+const client = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
   clientId: 'web_dashboard_' + Math.random().toString(16).substring(2, 8),
   clean: true,
   connectTimeout: 5000,
 });
 
 client.on('connect', () => {
-  console.log('✅ Web đã kết nối thành công với Mosquitto!');
+  console.log('✅ Web đã kết nối thành công với HiveMQ!');
 });
 
 client.on('error', (err) => {

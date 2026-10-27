@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Clock, CheckCircle2, Coffee, Bell, X, ChefHat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore, type Order } from '@/lib/store'
-import { formatVND } from '@/lib/utils'
+import { formatPrice } from '@/lib/utils' // 🚀 Dùng formatPrice thay cho formatVND để hỗ trợ đa tiền tệ
 import { useEffect, useState, useRef } from 'react'
 import { io } from 'socket.io-client'
 import { BACKEND_URL } from '@/lib/backend'
@@ -194,16 +194,22 @@ export function OrderTracker() {
                   </h4>
                   {currentOrder.items.map((item) => (
                     <div key={item.id} className="flex items-center justify-between py-1 text-sm">
-                      {/* 🚀 Sử dụng hàm translateItemName để tự động đổi tên món theo ngôn ngữ VN/EN */}
+                      {/* Dịch tên món theo ngôn ngữ VN/EN */}
                       <span className="text-muted-foreground">
                         {item.quantity}x {translateItemName(item.name, lang)}
                       </span>
-                      <span className="text-card-foreground">{formatVND(item.price * item.quantity)}</span>
+                      {/* 🚀 Chuyển đổi giá tiền sang đ hoặc $ theo lang */}
+                      <span className="text-card-foreground">
+                        {formatPrice(item.price * item.quantity, lang)}
+                      </span>
                     </div>
                   ))}
                   <div className="mt-2 flex items-center justify-between border-t border-border pt-2 font-medium">
                     <span className="text-card-foreground">{t('Tổng cộng', 'Total')}</span>
-                    <span className="text-primary">{formatVND(currentOrder.total)}</span>
+                    {/* 🚀 Tổng tiền cũng tự động quy đổi theo lang */}
+                    <span className="text-primary">
+                      {formatPrice(currentOrder.total, lang)}
+                    </span>
                   </div>
                 </div>
               </div>

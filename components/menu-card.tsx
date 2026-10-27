@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import type { MenuItem } from '@/lib/store'
 import { useCartStore } from '@/lib/store'
-import { formatVND } from '@/lib/utils'
+import { formatPrice } from '@/lib/utils' // 🚀 Sử dụng formatPrice thay cho formatVND
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { useLanguageStore } from '@/lib/languageStore'
@@ -129,8 +129,9 @@ export function MenuCard({ item, index }: MenuCardProps) {
             <h3 className="font-medium text-card-foreground leading-tight">
               {itemName}
             </h3>
+            {/* 🚀 Giá tiền trên Card tự động đổi theo ngôn ngữ (VNĐ / USD) */}
             <span className="shrink-0 font-semibold text-primary">
-              {formatVND(item.price)}
+              {formatPrice(item.price, lang)}
             </span>
           </div>
 
@@ -231,9 +232,13 @@ export function MenuCard({ item, index }: MenuCardProps) {
                   </div>
                 </div>
 
-                <Button onClick={handleAddItem} className="w-full h-12 rounded-2xl text-base font-bold shadow-lg">
-                  <Plus className="h-5 w-5 mr-2" />
-                  {t('Thêm vào giỏ', 'Add to Cart')} - {formatVND(item.price)}
+                <Button onClick={handleAddItem} className="w-full h-12 rounded-2xl text-base font-bold shadow-lg flex items-center justify-between px-4">
+                  <span className="flex items-center">
+                    <Plus className="h-5 w-5 mr-2" />
+                    {t('Thêm vào giỏ', 'Add to Cart')}
+                  </span>
+                  {/* 🚀 Giá tiền trong nút thêm vào giỏ cũng đổi theo lang */}
+                  <span>{formatPrice(item.price, lang)}</span>
                 </Button>
               </div>
             </motion.div>

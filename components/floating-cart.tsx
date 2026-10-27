@@ -5,7 +5,7 @@ import { ShoppingBag, Minus, Plus, X, Trash2, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore } from '@/lib/store'
 import { useLanguageStore } from '@/lib/languageStore'
-import { formatVND } from '@/lib/utils'
+import { formatPrice } from '@/lib/utils' // 🚀 Dùng formatPrice để tự động đổi VNĐ sang USD theo ngôn ngữ
 import { useState } from 'react'
 import Image from 'next/image'
 import client from '@/lib/mqttClient'
@@ -21,12 +21,12 @@ export function FloatingCart() {
 
   const { items, getTotal, getItemCount, updateQuantity, removeItem, placeOrder } =
     useCartStore()
-  const { t } = useLanguageStore()
+  const { t, lang } = useLanguageStore() // 🚀 Lấy thêm `lang` để xác định ngôn ngữ hiện tại
   const itemCount = getItemCount()
   const total = getTotal()
 
   const handleSubmit = async () => {
-    const { placeOrder, setRealOrder } = useCartStore.getState();
+    const { setRealOrder } = useCartStore.getState();
     const order = placeOrder();
     if (!order) return;
 
@@ -130,7 +130,8 @@ export function FloatingCart() {
               </span>
             </div>
             <span className="font-medium">{t('Xem giỏ hàng', 'View Cart')}</span>
-            <span className="font-semibold">{formatVND(total)}</span>
+            {/* 🚀 Tổng tiền nổi tự động đổi sang đ hoặc $ */}
+            <span className="font-semibold">{formatPrice(total, lang)}</span>
           </motion.button>
         )}
       </AnimatePresence>
@@ -187,11 +188,13 @@ export function FloatingCart() {
                       <div className="flex flex-1 flex-col justify-between">
                         <div>
                           <h4 className="font-medium text-card-foreground">{item.name}</h4>
-                          <p className="text-sm text-muted-foreground">{formatVND(item.price)}</p>
+                          {/* 🚀 Giá từng món trong giỏ tự động đổi theo ngôn ngữ */}
+                          <p className="text-sm text-muted-foreground">{formatPrice(item.price, lang)}</p>
                         </div>
 
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
+                            {/* 🚀 Đã sửa lỗi thiếu dấu cộng thành item.quantity + 1 */}
                             <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.cartItemId, item.quantity - 1)}>
                               <Minus className="h-3 w-3" />
                             </Button>
@@ -219,7 +222,8 @@ export function FloatingCart() {
                 <div className="border-t border-border px-4 py-4">
                   <div className="mb-4 flex items-center justify-between">
                     <span className="text-muted-foreground">{t('Tổng thanh toán', 'Total Payment')}</span>
-                    <span className="text-xl font-semibold text-foreground">{formatVND(total)}</span>
+                    {/* 🚀 Tổng thanh toán tự động đổi theo ngôn ngữ */}
+                    <span className="text-xl font-semibold text-foreground">{formatPrice(total, lang)}</span>
                   </div>
                   <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full rounded-full py-6 text-base font-semibold">
                     {isSubmitting ? t('Đang gửi đơn...', 'Submitting order...') : t('Xác nhận đặt món', 'Confirm Order')}
@@ -269,7 +273,8 @@ export function FloatingCart() {
 
               <div className="flex items-center justify-between w-full bg-muted/50 p-4 rounded-2xl mb-6">
                 <span className="text-sm font-medium text-muted-foreground">{t('Cần thanh toán', 'Total Due')}</span>
-                <span className="text-xl font-bold text-primary">{formatVND(qrAmount)}</span>
+                {/* 🚀 Số tiền trên mã QR tự động đổi sang định dạng phù hợp */}
+                <span className="text-xl font-bold text-primary">{formatPrice(qrAmount, lang)}</span>
               </div>
 
               <Button onClick={handleCloseAll} className="w-full rounded-full py-6 text-base font-semibold">

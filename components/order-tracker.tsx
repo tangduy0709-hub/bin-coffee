@@ -10,9 +10,37 @@ import { io } from 'socket.io-client'
 import { BACKEND_URL } from '@/lib/backend'
 import { useLanguageStore } from '@/lib/languageStore'
 
+// 🚀 Hàm hỗ trợ chuyển đổi tên món ăn/thức uống theo ngôn ngữ
+function translateItemName(name: string, lang: 'vi' | 'en') {
+  if (!name) return name
+
+  // Bản đồ dịch các món trong quán của bạn
+  const menuTranslationMap: Record<string, { vi: string; en: string }> = {
+    'Vietnamese Milk Coffee': { vi: 'Cà phê sữa', en: 'Vietnamese Milk Coffee' },
+    'Ca Phe Sua': { vi: 'Cà phê sữa', en: 'Vietnamese Milk Coffee' },
+    'Bac Xiu': { vi: 'Bạc Xỉu', en: 'Bac Xiu' },
+    'Ca Phe Da': { vi: 'Cà phê đá', en: 'Iced Coffee' },
+    'Tra Dao': { vi: 'Trà đào', en: 'Peach Tea' },
+    'Nuoc Cam': { vi: 'Nước cam', en: 'Orange Juice' },
+  }
+
+  // Tìm kiếm xem tên món có khớp với từ điển không (không phân biệt hoa thường)
+  for (const [key, val] of Object.entries(menuTranslationMap)) {
+    if (
+      name.toLowerCase() === key.toLowerCase() || 
+      name.toLowerCase() === val.vi.toLowerCase() || 
+      name.toLowerCase() === val.en.toLowerCase()
+    ) {
+      return lang === 'vi' ? val.vi : val.en
+    }
+  }
+
+  return name // Trả về nguyên bản nếu không tìm thấy trong từ điển
+}
+
 export function OrderTracker() {
   const { currentOrder, setOrder } = useCartStore()
-  const { t, lang } = useLanguageStore() // Lấy thêm `lang` để ép component bắt sự kiện thay đổi ngôn ngữ
+  const { t, lang } = useLanguageStore()
   const [showNotification, setShowNotification] = useState(false)
   const [notificationType, setNotificationType] = useState<'updated' | 'new' | null>(null)
   const [isExpanded, setIsExpanded] = useState(true)
@@ -100,11 +128,10 @@ export function OrderTracker() {
                 <Bell className="h-5 w-5 text-accent-foreground" />
               </div>
               <div className="flex-1">
-                {/* 🚀 Thông báo dịch trực tiếp bằng t() để thay đổi ngôn ngữ ngay lập tức */}
                 <h4 className="font-semibold text-accent-foreground">
                   {notificationType === 'updated' 
                     ? t('Đơn hàng đã được cập nhật!', 'Order Updated!') 
-                    : t('Đã lên đơn thành공!', 'Order Placed Successfully!')}
+                    : t('Đã lên đơn thành công!', 'Order Placed Successfully!')}
                 </h4>
                 <p className="text-sm text-accent-foreground/80">
                   {notificationType === 'updated' 
@@ -167,7 +194,10 @@ export function OrderTracker() {
                   </h4>
                   {currentOrder.items.map((item) => (
                     <div key={item.id} className="flex items-center justify-between py-1 text-sm">
-                      <span className="text-muted-foreground">{item.quantity}x {item.name}</span>
+                      {/* 🚀 Sử dụng hàm translateItemName để tự động đổi tên món theo ngôn ngữ VN/EN */}
+                      <span className="text-muted-foreground">
+                        {item.quantity}x {translateItemName(item.name, lang)}
+                      </span>
                       <span className="text-card-foreground">{formatVND(item.price * item.quantity)}</span>
                     </div>
                   ))}

@@ -7,14 +7,12 @@ import { useCartStore, type Order } from '@/lib/store'
 import { formatVND } from '@/lib/utils'
 import { useEffect, useState, useRef } from 'react'
 import { io } from 'socket.io-client'
-import { BACKEND_URL } from '@/lib/backend'
-import { useLanguageStore } from '@/lib/languageStore'
+import { BACKEND_URL } from '@/lib/backend' // 🚀 DÙNG CHUNG KÊNH VỚI DASHBOARD
 
 export function OrderTracker() {
   const { currentOrder, updateOrderStatus, setOrder } = useCartStore()
-  const { t, lang } = useLanguageStore()
   const [showNotification, setShowNotification] = useState(false)
-  const [notificationType, setNotificationType] = useState<'updated' | 'new' | null>(null)
+  const [notificationMsg, setNotificationMsg] = useState({ title: '', desc: '' })
   const [isExpanded, setIsExpanded] = useState(true)
   
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -35,7 +33,7 @@ export function OrderTracker() {
     }
   }
 
-  // 1. TỰ ĐỘNG KHÔI PHỤC ĐƠN HÀNG CŨ KHI KHÁCH F5 HOẶC VÀO LẠI TRANG
+  // 🚀 1. TỰ ĐỘNG KHÔI PHỤC ĐƠN HÀNG CŨ KHI KHÁCH F5 HOẶC VÀO LẠI TRANG
   useEffect(() => {
     async function checkActiveOrder() {
       try {
@@ -46,6 +44,7 @@ export function OrderTracker() {
           const res = await fetch(`${BACKEND_URL}/api/table/${currentTable}/active-order`);
           const data = await res.json();
           if (data.order) {
+            console.log("🔄 Restored active order for table:", data.order);
             setOrder(data.order); 
           }
         }
@@ -56,16 +55,27 @@ export function OrderTracker() {
     checkActiveOrder();
   }, [setOrder]);
 
-  // 2. LẮNG NGHE SOCKET CẬP NHẬT REALTIME
+  // 🚀 2. LẮNG NGHE SOCKET CẬP NHẬT REALTIME
   useEffect(() => {
     const socket = io(BACKEND_URL)
+
     const pathParts = window.location.pathname.split('/').filter(Boolean)
     const currentTable = pathParts[pathParts.length - 1]
 
+    socket.on('connect', () => {
+      console.log(`✅ Socket connected successfully for Table: ${currentTable}`);
+    })
+
     socket.on('order:updated', (updatedOrder) => {
       if (updatedOrder && String(updatedOrder.table_number) === String(currentTable)) {
+        console.log('🔄 Received order update from server/AI:', updatedOrder);
+        
         setOrder(updatedOrder);
-        setNotificationType('updated');
+
+        setNotificationMsg({ 
+          title: 'Order Updated!', 
+          desc: 'Item list or order status has been changed.' 
+        });
         setShowNotification(true);
         playNotificationSound();
       }
@@ -74,7 +84,7 @@ export function OrderTracker() {
     socket.on('order:new', (newOrder) => {
       if (newOrder && String(newOrder.table_number) === String(currentTable)) {
         setOrder(newOrder);
-        setNotificationType('new');
+        setNotificationMsg({ title: 'Order Placed Successfully!', desc: 'The kitchen is preparing your items.' });
         setShowNotification(true);
         playNotificationSound();
       }
@@ -88,9 +98,9 @@ export function OrderTracker() {
   if (!currentOrder) return null
 
   const statusSteps = [
-    { status: 'pending', label: t('Đã đặt', 'Ordered'), icon: CheckCircle2 },
-    { status: 'preparing', label: t('Đang làm', 'Preparing'), icon: ChefHat },
-    { status: 'ready', label: t('Sẵn sàng', 'Ready'), icon: Coffee },
+    { status: 'pending', label: 'Ordered', icon: CheckCircle2 },
+    { status: 'preparing', label: 'Preparing', icon: ChefHat },
+    { status: 'ready', label: 'Ready', icon: Coffee },
   ]
 
   const currentStepIndex = statusSteps.findIndex(step => step.status === currentOrder.status)
@@ -105,16 +115,8 @@ export function OrderTracker() {
                 <Bell className="h-5 w-5 text-accent-foreground" />
               </div>
               <div className="flex-1">
-                <h4 className="font-semibold text-accent-foreground">
-                  {notificationType === 'updated' 
-                    ? t('Đơn hàng đã được cập nhật!', 'Order Updated!') 
-                    : t('Đã lên đơn thành công!', 'Order Placed Successfully!')}
-                </h4>
-                <p className="text-sm text-accent-foreground/80">
-                  {notificationType === 'updated' 
-                    ? t('Danh sách món hoặc trạng thái vừa được thay đổi.', 'Item list or order status has been updated.') 
-                    : t('Quán đang chuẩn bị món cho bạn.', 'The kitchen is preparing your items.')}
-                </p>
+                <h4 className="font-semibold text-accent-foreground">{notificationMsg.title}</h4>
+                <p className="text-sm text-accent-foreground/80">{notificationMsg.desc}</p>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setShowNotification(false)} className="text-accent-foreground">
                 <X className="h-4 w-4" />
@@ -131,16 +133,12 @@ export function OrderTracker() {
               {currentOrder.status === 'ready' ? <Coffee className="h-5 w-5 text-primary" /> : <Clock className="h-5 w-5 text-primary" />}
             </div>
             <div className="text-left">
-              <h3 className="font-semibold text-card-foreground">
-                {t('Đơn', 'Order')} #{currentOrder.order_number || currentOrder.id}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {currentOrder.status === 'ready' ? t('Đã sẵn sàng!', 'Ready to serve!') : t('Đang xử lý', 'Processing')}
-              </p>
+              <h3 className="font-semibold text-card-foreground">Order #{currentOrder.order_number || currentOrder.id}</h3>
+              <p className="text-sm text-muted-foreground">{currentOrder.status === 'ready' ? 'Ready to serve!' : 'Processing'}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <StatusBadge status={currentOrder.status} t={t} />
+            <StatusBadge status={currentOrder.status} />
           </div>
         </button>
 
@@ -166,9 +164,7 @@ export function OrderTracker() {
                 </div>
 
                 <div className="rounded-xl bg-muted/50 p-3">
-                  <h4 className="mb-2 text-sm font-medium text-card-foreground">
-                    {t('Tóm tắt đơn hàng', 'Order Summary')}
-                  </h4>
+                  <h4 className="mb-2 text-sm font-medium text-card-foreground">Order Summary</h4>
                   {currentOrder.items.map((item) => (
                     <div key={item.id} className="flex items-center justify-between py-1 text-sm">
                       <span className="text-muted-foreground">{item.quantity}x {item.name}</span>
@@ -176,7 +172,7 @@ export function OrderTracker() {
                     </div>
                   ))}
                   <div className="mt-2 flex items-center justify-between border-t border-border pt-2 font-medium">
-                    <span className="text-card-foreground">{t('Tổng cộng', 'Total')}</span>
+                    <span className="text-card-foreground">Total</span>
                     <span className="text-primary">{formatVND(currentOrder.total)}</span>
                   </div>
                 </div>
@@ -189,7 +185,7 @@ export function OrderTracker() {
   )
 }
 
-function StatusBadge({ status, t }: { status: Order['status'], t: (vi: string, en: string) => string }) {
+function StatusBadge({ status }: { status: Order['status'] }) {
   const styles = { 
     pending: 'bg-secondary text-secondary-foreground', 
     preparing: 'bg-accent/20 text-accent', 
@@ -197,10 +193,10 @@ function StatusBadge({ status, t }: { status: Order['status'], t: (vi: string, e
     completed: 'bg-muted text-muted-foreground' 
   }
   const labels = { 
-    pending: t('Đang xử lý', 'Processing'), 
-    preparing: t('Đang pha chế', 'Preparing'), 
-    ready: t('Xong', 'Ready'), 
-    completed: t('Hoàn thành', 'Completed') 
+    pending: 'Processing', 
+    preparing: 'Preparing', 
+    ready: 'Ready', 
+    completed: 'Completed' 
   }
   return (
     <span className={`rounded-full px-3 py-1 text-xs font-medium ${styles[status]}`}>{labels[status]}</span>

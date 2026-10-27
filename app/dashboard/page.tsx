@@ -25,6 +25,24 @@ const getSafeDateString = (dateVal: string | Date) => {
   return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
 };
 
+// 🚀 Hàm định dạng giá tiền độc lập trên Dashboard dựa theo loại tiền tệ (currency) của đơn hàng
+const formatDashboardPrice = (amount: number, currency: 'VND' | 'USD' = 'VND') => {
+  if (currency === 'USD') {
+    const exchangeRate = 25000;
+    const amountInUSD = amount / exchangeRate;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+    }).format(amountInUSD);
+  }
+
+  return new Intl.NumberFormat('vi-VN', {
+    style: 'currency',
+    currency: 'VND'
+  }).format(amount).replace('₫', 'đ');
+};
+
 interface KitchenOrderItem {
   id: number
   name: string
@@ -42,6 +60,7 @@ interface KitchenOrder {
   created_at: string
   items: KitchenOrderItem[]
   payment_status?: string
+  currency?: 'VND' | 'USD'
 }
 
 interface TableDetail {
@@ -69,30 +88,6 @@ export default function DashboardPage() {
     setIsMounted(true);
     setSelectedDate(getSafeDateString(new Date()));
   }, []);
-
-  const handleGoiKhach = async (soBan: string) => {
-    const FIREBASE_URL = "https://cafe-thong-bao-default-rtdb.firebaseio.com/thong_bao.json";
-  
-    try {
-      const response = await fetch(FIREBASE_URL, {
-        method: "PUT", 
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ban: soBan,
-          trang_thai: "READY",
-          thoi_gian: Date.now()
-        }),
-      });
-  
-      if (response.ok) toast.success(`📶 Buzzer signal sent to Firebase for Table ${soBan}!`);
-      else {
-        const errText = await response.text();
-        toast.error(`❌ Firebase access blocked: Error ${response.status}\n${errText}`, { duration: 6000 });
-      }
-    } catch (error: any) {
-      toast.error(`❌ Web network error: ${error.message}`);
-    }
-  };
 
   const sortedOrders = useMemo(
     () => [...orders].sort((a, b) => Number(b.id) - Number(a.id)),
@@ -346,7 +341,7 @@ export default function DashboardPage() {
                   <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">
-                        {t(`Đơn #${order.order_number} - Bàn ${order.table_number}`, `Order #${order.order_number} - Table ${order.table_number}`)}
+                        {t(`Đơn #${order.order_number} • Bàn ${order.table_number}`, `Order #${order.order_number} • Table ${order.table_number}`)}
                       </p>
                       <h2 className="mt-1 text-xl font-semibold text-foreground">
                         {order.items.length} {t('món', 'items')}
@@ -372,7 +367,10 @@ export default function DashboardPage() {
                         </span>
                       )}
 
-                      <span className="rounded-full bg-muted px-3 py-1 font-semibold text-muted-foreground">{formatVND(order.total)}</span>
+                      {/* 🚀 Hiển thị đúng đơn vị tiền tệ dựa trên order.currency */}
+                      <span className="rounded-full bg-muted px-3 py-1 font-semibold text-muted-foreground">
+                        {formatDashboardPrice(order.total, order.currency || 'VND')}
+                      </span>
                     </div>
                   </div>
 
@@ -382,7 +380,8 @@ export default function DashboardPage() {
                         <div key={item.id} className="flex flex-col rounded-2xl bg-muted/50 p-3">
                           <div className="flex items-center justify-between">
                             <span className="font-medium text-foreground">{item.quantity} x {item.name}</span>
-                            <span>{formatVND(item.quantity * item.price)}</span>
+                            {/* 🚀 Đã sửa lỗi thiếu dấu nhân (*) */}
+                            <span>{formatDashboardPrice(item.quantity * item.price, order.currency || 'VND')}</span>
                           </div>
                           
                           {item.customizations && (
@@ -631,20 +630,22 @@ export default function DashboardPage() {
                       <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">{t('Không có đơn hàng nào trong ngày này.', 'No orders recorded for this date.')}</td></tr>
                     ) : (
                       historyOrders.map((order) => (
-                        <tr key={order.id} className="hover:bg-muted/20 transition-colors">
-                          <td className="py-3 pr-4 font-semibold">#{order.order_number}</td>
-                          <td className="py-3 pr-4 text-muted-foreground">{new Date(order.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</td>
-                          <td className="py-3 pr-4 font-medium">{t(`Bàn ${order.table_number}`, `Table ${order.table_number}`)}</td>
-                          <td className="py-3 pr-4 text-muted-foreground max-w-[200px] truncate">{order.items.map(item => `${item.quantity}x ${item.name}`).join(', ')}</td>
-                          <td className="py-3 pr-4 font-semibold">{formatVND(order.total)}</td>
-                          <td className="py-3 pr-4">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${order.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                        <tr key={order.id} className="hover:bg-muted/30">
+                          <td className="py-4 pr-4 font-medium text-foreground">#{order.order_number}</td>
+                          <td className="py-4 pr-4 text-muted-foreground">{new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
+                          <td className="py-4 pr-4 font-medium">Bàn {order.table_number}</td>
+                          <td className="py-4 pr-4 text-muted-foreground">{order.items.map(i => `${i.quantity}x ${i.name}`).join(', ')}</td>
+                          <td className="py-4 pr-4 font-semibold text-foreground">{formatDashboardPrice(order.total, order.currency || 'VND')}</td>
+                          <td className="py-4 pr-4">
+                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${order.payment_status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                               {order.payment_status === 'paid' ? t('Đã trả', 'Paid') : t('Chưa trả', 'Unpaid')}
                             </span>
                           </td>
-                          <td className="py-3">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${order.status === 'completed' ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'}`}>
-                              {order.status === 'completed' ? t('Hoàn thành', 'Completed') : order.status === 'ready' ? t('Sẵn sàng', 'Ready') : t('Đang pha chế', 'Preparing')}
+                          <td className="py-4">
+                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                              order.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {order.status === 'completed' ? t('Hoàn thành', 'Completed') : order.status}
                             </span>
                           </td>
                         </tr>
@@ -656,22 +657,19 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
-
       </div>
 
-      {/* Table details modal */}
+      {/* Modal chi tiết bàn */}
       {selectedTableDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-          <div className="bg-card w-full max-w-lg rounded-3xl border border-border p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-border pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg rounded-3xl bg-card p-6 shadow-2xl border border-border max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-border">
               <div>
-                <h3 className="text-xl font-bold">
+                <h2 className="text-xl font-bold text-foreground">
                   {t(`Chi tiết Bàn ${selectedTableDetails.tableNum}`, `Table ${selectedTableDetails.tableNum} Details`)}
-                </h3>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {selectedTableDetails.isOccupied 
-                    ? t('Bàn đang có đơn hàng hoạt động', 'Active orders in progress')
-                    : t('Bàn hiện đang trống', 'Table is currently available')}
+                </h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {selectedTableDetails.isOccupied ? t('Đang có đơn hàng hoạt động', 'Active orders ongoing') : t('Bàn đang trống', 'Table is available')}
                 </p>
               </div>
               <Button variant="ghost" size="icon" onClick={() => setSelectedTableDetails(null)} className="rounded-full">
@@ -679,43 +677,71 @@ export default function DashboardPage() {
               </Button>
             </div>
 
-            <div className="space-y-4">
+            <div className="py-4 space-y-4">
               {selectedTableDetails.activeOrders.length === 0 ? (
-                <div className="py-8 text-center text-muted-foreground">
-                  {t('Không có đơn hàng nào tại bàn này.', 'No active orders for this table.')}
-                </div>
+                <p className="text-center py-8 text-muted-foreground">{t('Không có đơn hàng nào cho bàn này.', 'No active orders for this table.')}</p>
               ) : (
-                selectedTableDetails.activeOrders.map((order) => (
-                  <div key={order.id} className="rounded-2xl border border-border bg-muted/40 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">#{order.order_number}</span>
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        order.status === 'completed' ? 'bg-gray-200 text-gray-700' : 'bg-blue-100 text-blue-700'
-                      }`}>
-                        {order.status}
-                      </span>
+                selectedTableDetails.activeOrders.map(order => (
+                  <div key={order.id} className="p-4 rounded-2xl bg-muted/40 border border-border/60 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-foreground">Đơn #{order.order_number}</span>
+                      <span className="font-bold text-primary">{formatDashboardPrice(order.total, order.currency || 'VND')}</span>
                     </div>
-                    <div className="space-y-1 text-sm">
-                      {order.items.map((item, idx) => (
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      {order.items.map((it, idx) => (
                         <div key={idx} className="flex justify-between">
-                          <span>{item.quantity}x {item.name}</span>
-                          <span>{formatVND(item.quantity * item.price)}</span>
+                          <span>{it.quantity}x {it.name}</span>
+                          <span>{formatDashboardPrice(it.quantity * it.price, order.currency || 'VND')}</span>
                         </div>
                       ))}
                     </div>
-                    <div className="flex justify-between pt-2 border-t border-border font-bold">
-                      <span>{t('Tổng cộng', 'Total')}:</span>
-                      <span className="text-primary">{formatVND(order.total)}</span>
+                    <div className="flex justify-between items-center pt-2 border-t border-border/40 text-xs">
+                      <span>Trạng thái: <strong className="text-foreground">{order.status}</strong></span>
+                      <span>Thanh toán: <strong className={order.payment_status === 'paid' ? 'text-green-600' : 'text-red-600'}>{order.payment_status === 'paid' ? 'Đã trả' : 'Chưa trả'}</strong></span>
                     </div>
                   </div>
                 ))
               )}
             </div>
 
-            <div className="pt-2 flex justify-end">
-              <Button onClick={() => setSelectedTableDetails(null)} className="rounded-xl">
-                {t('Đóng', 'Close')}
-              </Button>
+            <div className="pt-4 border-t border-border flex justify-between items-center">
+              <div>
+                <span className="text-xs text-muted-foreground block">{t('Tổng chưa thanh toán', 'Total Unpaid')}</span>
+                <span className="text-lg font-bold text-red-600">{formatVND(selectedTableDetails.totalUnpaid)}</span>
+              </div>
+              
+              <div className="flex gap-2">
+                {selectedTableDetails.isOccupied && (
+                  <Button 
+                    variant="default"
+                    size="sm"
+                    className="rounded-xl"
+                    onClick={() => {
+                      const tableNumStr = selectedTableDetails.tableNum;
+                      setSelectedTableDetails(null);
+                      // Gọi hàm gọi khách (Buzzer)
+                      const FIREBASE_URL = "https://cafe-thong-bao-default-rtdb.firebaseio.com/thong_bao.json";
+                      fetch(FIREBASE_URL, {
+                        method: "PUT", 
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          ban: tableNumStr,
+                          trang_thai: "READY",
+                          thoi_gian: Date.now()
+                        }),
+                      }).then(res => {
+                        if (res.ok) toast.success(`📶 Buzzer signal sent to Table ${tableNumStr}!`);
+                        else toast.error("❌ Failed to send buzzer signal.");
+                      }).catch(() => toast.error("❌ Network error sending buzzer."));
+                    }}
+                  >
+                    🔔 {t('Gọi khách', 'Buzz Customer')}
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" onClick={() => setSelectedTableDetails(null)} className="rounded-xl">
+                  {t('Đóng', 'Close')}
+                </Button>
+              </div>
             </div>
           </div>
         </div>

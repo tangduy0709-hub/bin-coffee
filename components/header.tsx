@@ -1,206 +1,64 @@
 'use client'
 
-import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, CheckCircle2, Coffee, Bell, X, ChefHat } from 'lucide-react'
+import { motion } from 'framer-motion'
+import { Coffee, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useCartStore, type Order } from '@/lib/store'
-import { formatVND } from '@/lib/utils'
-import { useEffect, useState, useRef } from 'react'
-import { io } from 'socket.io-client'
-import { BACKEND_URL } from '@/lib/backend'
-import { useLanguageStore } from '@/lib/languageStore' // 🚀 Dùng chung store ngôn ngữ với Header
+import { useState } from 'react'
+import { useLanguageStore } from '@/lib/languageStore'
 
 export function Header() {
-  const { currentOrder, updateOrderStatus, setOrder } = useCartStore()
-  const { t, lang } = useLanguageStore() // 🚀 Lấy hàm dịch t và ngôn ngữ hiện tại lang
-  const [showNotification, setShowNotification] = useState(false)
-  const [notificationMsg, setNotificationMsg] = useState({ title: '', desc: '' })
-  const [isExpanded, setIsExpanded] = useState(true)
-  
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  
-  const currentOrderRef = useRef(currentOrder)
-  useEffect(() => {
-    currentOrderRef.current = currentOrder
-  }, [currentOrder])
+  const [hasNotifications, setHasNotifications] = useState(true)
+  const { lang, setLang, t } = useLanguageStore()
 
-  useEffect(() => {
-    audioRef.current = new Audio('https://www.soundjay.com/buttons/sounds/button-09.mp3')
-    audioRef.current.volume = 0.5
-  }, [])
-
-  const playNotificationSound = () => {
-    if (audioRef.current) {
-      audioRef.current.play().catch(e => console.log("Audio play error:", e))
-    }
+  const toggleLanguage = () => {
+    setLang(lang === 'vi' ? 'en' : 'vi')
   }
-
-  // 1. TỰ ĐỘNG KHÔI PHỤC ĐƠN HÀNG CŨ KHI KHÁCH F5 HOẶC VÀO LẠI TRANG
-  useEffect(() => {
-    async function checkActiveOrder() {
-      try {
-        const pathParts = window.location.pathname.split('/').filter(Boolean)
-        const currentTable = pathParts[pathParts.length - 1]
-        
-        if (currentTable) {
-          const res = await fetch(`${BACKEND_URL}/api/table/${currentTable}/active-order`);
-          const data = await res.json();
-          if (data.order) {
-            setOrder(data.order); 
-          }
-        }
-      } catch (err) {
-        console.log("No active order to restore.");
-      }
-    }
-    checkActiveOrder();
-  }, [setOrder]);
-
-  // 2. LẮNG NGHE SOCKET CẬP NHẬT REALTIME
-  useEffect(() => {
-    const socket = io(BACKEND_URL)
-    const pathParts = window.location.pathname.split('/').filter(Boolean)
-    const currentTable = pathParts[pathParts.length - 1]
-
-    socket.on('order:updated', (updatedOrder) => {
-      if (updatedOrder && String(updatedOrder.table_number) === String(currentTable)) {
-        setOrder(updatedOrder);
-        setNotificationMsg({ 
-          title: lang === 'en' ? 'Order Updated!' : 'Đơn hàng đã được cập nhật!', 
-          desc: lang === 'en' ? 'Item list or order status has been updated.' : 'Danh sách món hoặc trạng thái vừa được thay đổi.' 
-        });
-        setShowNotification(true);
-        playNotificationSound();
-      }
-    });
-
-    socket.on('order:new', (newOrder) => {
-      if (newOrder && String(newOrder.table_number) === String(currentTable)) {
-        setOrder(newOrder);
-        setNotificationMsg({ 
-          title: lang === 'en' ? 'Order Placed Successfully!' : 'Đã lên đơn thành công!', 
-          desc: lang === 'en' ? 'The kitchen is preparing your items.' : 'Quán đang chuẩn bị món cho bạn.' 
-        });
-        setShowNotification(true);
-        playNotificationSound();
-      }
-    });
-
-    return () => {
-      socket.disconnect()
-    }
-  }, [setOrder, lang])
-
-  if (!currentOrder) return null
-
-  const statusSteps = [
-    { status: 'pending', label: t('Đã đặt', 'Ordered'), icon: CheckCircle2 },
-    { status: 'preparing', label: t('Đang làm', 'Preparing'), icon: ChefHat },
-    { status: 'ready', label: t('Sẵn sàng', 'Ready'), icon: Coffee },
-  ]
-
-  const currentStepIndex = statusSteps.findIndex(step => step.status === currentOrder.status)
 
   return (
-    <>
-      <AnimatePresence>
-        {showNotification && (
-          <motion.div initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -50 }} className="fixed left-4 right-4 top-20 z-50 rounded-2xl bg-accent p-4 shadow-lg">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-foreground/10">
-                <Bell className="h-5 w-5 text-accent-foreground" />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-semibold text-accent-foreground">{notificationMsg.title}</h4>
-                <p className="text-sm text-accent-foreground/80">{notificationMsg.desc}</p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setShowNotification(false)} className="text-accent-foreground">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mx-4 mb-4 overflow-hidden rounded-2xl bg-card shadow-md">
-        <button onClick={() => setIsExpanded(!isExpanded)} className="flex w-full items-center justify-between p-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              {currentOrder.status === 'ready' ? <Coffee className="h-5 w-5 text-primary" /> : <Clock className="h-5 w-5 text-primary" />}
-            </div>
-            <div className="text-left">
-              <h3 className="font-semibold text-card-foreground">
-                {t('Đơn', 'Order')} #{currentOrder.order_number || currentOrder.id}
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                {currentOrder.status === 'ready' ? t('Đã sẵn sàng!', 'Ready to serve!') : t('Đang xử lý', 'Processing')}
-              </p>
-            </div>
+    <motion.header
+      initial={{ y: -20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      className="sticky top-0 z-50 glass px-4 py-3 border-b border-border/40 bg-background/80 backdrop-blur-md"
+    >
+      <div className="mx-auto flex max-w-lg items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm">
+            <Coffee className="h-5 w-5" />
           </div>
-          <div className="flex items-center gap-2">
-            <StatusBadge status={currentOrder.status} t={t} />
+          <div>
+            <h1 className="font-serif text-lg font-semibold tracking-tight text-foreground">
+              Bin coffee
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              {t('Gọi giọng nói và đặt món ngay tại bàn', 'Voice ordering & smart table ordering')}
+            </p>
           </div>
-        </button>
+        </div>
 
-        <AnimatePresence>
-          {isExpanded && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-              <div className="border-t border-border px-4 py-4">
-                <div className="mb-4 flex justify-between">
-                  {statusSteps.map((step, index) => {
-                    const Icon = step.icon
-                    const isActive = index <= currentStepIndex
-                    const isCurrent = index === currentStepIndex
-                    return (
-                      <div key={step.status} className="flex flex-col items-center">
-                        <div className={`relative flex h-10 w-10 items-center justify-center rounded-full transition-colors ${isActive ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                          <Icon className="h-5 w-5" />
-                          {isCurrent && <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute inset-0 rounded-full border-2 border-primary" />}
-                        </div>
-                        <span className={`mt-2 text-xs ${isActive ? 'font-medium text-foreground' : 'text-muted-foreground'}`}>{step.label}</span>
-                      </div>
-                    )
-                  })}
-                </div>
+        <div className="flex items-center gap-2">
+          {/* Nút chuyển đổi ngôn ngữ VN / EN */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={toggleLanguage}
+            className="rounded-full gap-1 text-xs font-semibold px-3 h-9"
+          >
+            {lang === 'vi' ? '🇻🇳 VN' : '🇬🇧 EN'}
+          </Button>
 
-                <div className="rounded-xl bg-muted/50 p-3">
-                  <h4 className="mb-2 text-sm font-medium text-card-foreground">
-                    {t('Tóm tắt đơn hàng', 'Order Summary')}
-                  </h4>
-                  {currentOrder.items.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between py-1 text-sm">
-                      <span className="text-muted-foreground">{item.quantity}x {item.name}</span>
-                      <span className="text-card-foreground">{formatVND(item.price * item.quantity)}</span>
-                    </div>
-                  ))}
-                  <div className="mt-2 flex items-center justify-between border-t border-border pt-2 font-medium">
-                    <span className="text-card-foreground">{t('Tổng cộng', 'Total')}</span>
-                    <span className="text-primary">{formatVND(currentOrder.total)}</span>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
-    </>
-  )
-}
-
-function StatusBadge({ status, t }: { status: Order['status'], t: (vi: string, en: string) => string }) {
-  const styles = { 
-    pending: 'bg-secondary text-secondary-foreground', 
-    preparing: 'bg-accent/20 text-accent', 
-    ready: 'bg-primary/20 text-primary', 
-    completed: 'bg-muted text-muted-foreground' 
-  }
-  const labels = { 
-    pending: t('Đang xử lý', 'Processing'), 
-    preparing: t('Đang pha chế', 'Preparing'), 
-    ready: t('Xong', 'Ready'), 
-    completed: t('Hoàn thành', 'Completed') 
-  }
-  return (
-    <span className={`rounded-full px-3 py-1 text-xs font-medium ${styles[status]}`}>{labels[status]}</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            onClick={() => setHasNotifications(false)}
+          >
+            <Bell className="h-5 w-5 text-muted-foreground" />
+            {hasNotifications && (
+              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-accent" />
+            )}
+          </Button>
+        </div>
+      </div>
+    </motion.header>
   )
 }

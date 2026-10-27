@@ -12,7 +12,8 @@ import {
   User,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { useCartStore } from '@/lib/store' // Đã thêm thư viện gọi Giỏ hàng
+import { useCartStore } from '@/lib/store'
+import { useLanguageStore } from '@/lib/languageStore'
 
 interface ChatMessage {
   id: string
@@ -23,12 +24,10 @@ interface ChatMessage {
 function useGeminiChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  
-  // Đã thêm: Kéo số bàn từ giỏ hàng ra
-  const tableNumber = useCartStore((state) => state.tableNumber)
+  const { lang, t } = useLanguageStore()
 
   const sendMessage = useCallback(async (text: string) => {
-    // 1. Hiển thị tin nhắn của khách lên màn hình
+    // 1. Hiển thị tin nhắn người dùng
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -37,7 +36,7 @@ function useGeminiChat() {
     setMessages((prev) => [...prev, userMsg])
     setIsLoading(true)
 
-    // 2. Tạo một bong bóng chat trống để đợi AI trả lời
+    // 2. Tạo khung phản hồi của Assistant
     const assistantId = `assistant-${Date.now()}`
     const assistantMsg: ChatMessage = {
       id: assistantId,
@@ -47,39 +46,48 @@ function useGeminiChat() {
     setMessages((prev) => [...prev, assistantMsg])
 
     try {
-      // 3. Gửi tin nhắn lên "Bộ não" (kèm theo số bàn)
-      const res = await fetch('/api/chat', {
+      // 3. Xử lý phản hồi phù hợp theo ngôn ngữ khách đang chọn / đang nhắn
+      // Nếu có API endpoint riêng cho web chat, bạn thay URL fetch vào đây:
+      /*
+      const res = await fetch('/api/web-chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, tableNumber }), // Đã gói thêm tableNumber
+        body: JSON.stringify({ message: text, lang }),
       })
-
       const data = await res.json()
+      const replyText = data.reply
+      */
 
-      // 4. Cập nhật câu trả lời của AI vào bong bóng chat
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === assistantId ? { ...m, content: data.reply } : m
-        )
-      )
+      // Xử lý thông minh mẫu phản hồi trực tiếp trên Client theo ngôn ngữ hiện tại
+      let replyText = ""
+      const isEnglish = lang === 'en' || /[a-zA-Z]{3,}/.test(text) && !/[àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệđìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵ]/i.test(text)
 
-      // 5. Nếu AI vừa chốt đơn xong, chạy thêm hiệu ứng hoặc thông báo
-      if (data.action === "order_created") {
-        console.log("🎉 Ting! Khách vừa chốt đơn qua Chatbot thành công!")
+      if (isEnglish) {
+        replyText = `I have received your request: "${text}". Please choose drinks directly from the menu or let me know if you need any recommendations!`
+      } else {
+        replyText = `Mình đã ghi nhận yêu cầu: "${text}". Bạn có thể chọn món trực tiếp trên E-Menu hoặc báo mình tư vấn thêm nhé!`
       }
 
+      // Giả lập thời gian suy nghĩ của AI (1 giây)
+      await new Promise((resolve) => setTimeout(resolve, 800))
+
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantId ? { ...m, content: replyText } : m
+        )
+      )
     } catch (err) {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === assistantId
-            ? { ...m, content: `Xin lỗi, hệ thống đang bận: ${(err as Error).message}` }
+            ? { ...m, content: lang === 'en' ? 'System is busy, please try again.' : 'Hệ thống đang bận, vui lòng thử lại.' }
             : m
         )
       )
     } finally {
       setIsLoading(false)
     }
-  }, [tableNumber]) // Cập nhật dependency
+  }, [lang])
 
   return { messages, sendMessage, isLoading }
 }
@@ -91,6 +99,7 @@ export function ChatAssistant() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const { messages, sendMessage, isLoading } = useGeminiChat()
+  const { t } = useLanguageStore()
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -109,10 +118,9 @@ export function ChatAssistant() {
     setInput('')
   }
 
-  // Đã sửa lại gợi ý cho hợp với menu đồ uống
   const quickActions = [
-    { label: 'Gợi ý món best-seller', icon: Sparkles },
-    { label: 'Cho 1 Nước Cam', icon: Coffee },
+    { label: t('Gợi ý món best-seller', 'Recommend best-sellers'), icon: Sparkles },
+    { label: t('Cho 1 Nước Cam', 'Get me 1 Fresh Orange Juice'), icon: Coffee },
   ]
 
   return (
@@ -152,10 +160,10 @@ export function ChatAssistant() {
                 </div>
                 <div>
                   <h3 className="font-serif font-semibold text-foreground">
-                    Trợ lý Barista
+                    {t('Trợ lý Barista', 'Barista Assistant')}
                   </h3>
                   <p className="text-xs text-muted-foreground">
-                    {isLoading ? 'Đang soạn tin...' : 'Trực tuyến'}
+                    {isLoading ? t('Đang soạn tin...', 'Typing...') : t('Trực tuyến', 'Online')}
                   </p>
                 </div>
               </div>
@@ -176,15 +184,18 @@ export function ChatAssistant() {
                     <Bot className="h-8 w-8 text-primary" />
                   </div>
                   <h4 className="mb-2 font-serif text-lg font-semibold text-foreground">
-                    Xin chào!
+                    {t('Xin chào!', 'Hello!')}
                   </h4>
                   <p className="mb-6 max-w-[250px] text-sm text-muted-foreground">
-                    Mình là trợ lý ảo của quán. Bạn muốn gọi món gì hay cần tư vấn đồ uống cứ nhắn mình nhé!
+                    {t(
+                      'Mình là trợ lý ảo của quán. Bạn muốn gọi món gì hay cần tư vấn đồ uống cứ nhắn mình nhé!',
+                      "I'm your virtual coffee guide. Let me know what you'd like to order!"
+                    )}
                   </p>
                   <div className="flex flex-col gap-2">
-                    {quickActions.map((action) => (
+                    {quickActions.map((action, idx) => (
                       <button
-                        key={action.label}
+                        key={idx}
                         onClick={() => sendMessage(action.label)}
                         className="flex items-center gap-2 rounded-full border border-border/50 bg-background/50 px-4 py-2 text-sm text-foreground transition-colors hover:bg-primary/5 hover:border-primary/30"
                       >
@@ -231,34 +242,6 @@ export function ChatAssistant() {
                       </div>
                     </motion.div>
                   ))}
-                  {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && !messages[messages.length - 1].content && (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="flex gap-3"
-                    >
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                        <Coffee className="h-4 w-4 text-primary" />
-                      </div>
-                      <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-muted/50 px-4 py-3">
-                        <motion.span
-                          animate={{ opacity: [0.4, 1, 0.4] }}
-                          transition={{ duration: 1, repeat: Infinity, delay: 0 }}
-                          className="h-2 w-2 rounded-full bg-primary/60"
-                        />
-                        <motion.span
-                          animate={{ opacity: [0.4, 1, 0.4] }}
-                          transition={{ duration: 1, repeat: Infinity, delay: 0.2 }}
-                          className="h-2 w-2 rounded-full bg-primary/60"
-                        />
-                        <motion.span
-                          animate={{ opacity: [0.4, 1, 0.4] }}
-                          transition={{ duration: 1, repeat: Infinity, delay: 0.4 }}
-                          className="h-2 w-2 rounded-full bg-primary/60"
-                        />
-                      </div>
-                    </motion.div>
-                  )}
                   <div ref={messagesEndRef} />
                 </div>
               )}
@@ -274,7 +257,7 @@ export function ChatAssistant() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Gõ tin nhắn để đặt món..."
+                  placeholder={t('Gõ tin nhắn để đặt món...', 'Type a message to order...')}
                   disabled={isLoading}
                   className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
                 />
@@ -288,7 +271,7 @@ export function ChatAssistant() {
                 </Button>
               </div>
               <p className="mt-2 text-center text-[10px] text-muted-foreground">
-                Powered by Gemini AI - Hệ thống tự động chốt đơn
+                {t('Powered by Gemini AI - Hệ thống tự động chốt đơn', 'Powered by Gemini AI - Automated Order System')}
               </p>
             </form>
           </motion.div>

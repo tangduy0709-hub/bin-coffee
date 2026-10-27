@@ -9,6 +9,7 @@ import { useCartStore } from '@/lib/store'
 import { formatVND } from '@/lib/utils'
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
+import { useLanguageStore } from '@/lib/languageStore'
 
 interface MenuCardProps {
   item: MenuItem
@@ -17,9 +18,14 @@ interface MenuCardProps {
 
 export function MenuCard({ item, index }: MenuCardProps) {
   const addItem = useCartStore((state) => state.addItem)
+  const { lang, t } = useLanguageStore()
   const [showCustomize, setShowCustomize] = useState(false)
   const [ice, setIce] = useState<'none' | 'light' | 'normal' | 'extra'>('normal')
   const [sugar, setSugar] = useState<'none' | 'light' | 'normal' | 'extra'>('normal')
+
+  // Bóc tách chuỗi chữ từ Object song ngữ
+  const itemName = typeof item.name === 'object' ? (item.name[lang] || item.name.en) : item.name
+  const itemDesc = typeof item.description === 'object' ? (item.description[lang] || item.description.en) : item.description
 
   useEffect(() => {
     if (showCustomize) {
@@ -50,39 +56,37 @@ export function MenuCard({ item, index }: MenuCardProps) {
     setSugar('normal')
   }
 
-  const isMilkBasedDrink = ['Cà Phê Sữa', 'Bạc Xỉu'].includes(item.name)
+  const isMilkBasedDrink = ['Cà Phê Sữa', 'Bạc Xỉu', 'Vietnamese Milk Coffee', 'Bac Xiu'].includes(itemName)
 
   const getIceLabel = (option: 'none' | 'light' | 'normal' | 'extra') => {
     return option === 'none'
-      ? 'Không đá'
+      ? t('Không đá', 'No Ice')
       : option === 'light'
-        ? 'Ít đá'
+        ? t('Ít đá', 'Less Ice')
         : option === 'normal'
-          ? 'Vừa đá'
-          : 'Nhiều đá'
+          ? t('Vừa đá', 'Regular Ice')
+          : t('Nhiều đá', 'Extra Ice')
   }
 
   const getSugarLabel = (option: 'none' | 'light' | 'normal' | 'extra') => {
-    // Nếu là món có sữa (Cà Phê Sữa, Bạc Xỉu) thì đổi nhãn thành "sữa"
     if (isMilkBasedDrink) {
       return option === 'none'
-        ? 'Không sữa'
+        ? t('Không sữa', 'No Milk')
         : option === 'light'
-          ? 'Ít sữa'
+          ? t('Ít sữa', 'Less Milk')
           : option === 'normal'
-            ? 'Vừa sữa'
-            : 'Nhiều sữa';
+            ? t('Vừa sữa', 'Regular Milk')
+            : t('Nhiều sữa', 'Extra Milk')
     }
 
-    // Các món khác giữ nguyên nhãn "đường"
     return option === 'none'
-      ? 'Không đường'
+      ? t('Không đường', 'No Sugar')
       : option === 'light'
-        ? 'Ít đường'
+        ? t('Ít đường', 'Less Sugar')
         : option === 'normal'
-          ? 'Vừa đường'
-          : 'Nhiều đường';
-  };
+          ? t('Vừa đường', 'Regular Sugar')
+          : t('Nhiều đường', 'Extra Sugar')
+  }
 
   const handleAddItem = () => {
     const customizations =
@@ -96,7 +100,6 @@ export function MenuCard({ item, index }: MenuCardProps) {
 
   return (
     <>
-      {/* KHỐI 1: THẺ HIỂN THỊ MÓN ĂN */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -107,7 +110,7 @@ export function MenuCard({ item, index }: MenuCardProps) {
         <div className="relative mb-3 aspect-square overflow-hidden rounded-xl">
           <Image
             src={item.image}
-            alt={item.name}
+            alt={itemName}
             fill
             className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
@@ -115,7 +118,7 @@ export function MenuCard({ item, index }: MenuCardProps) {
             <div className="absolute left-2 top-2">
               <Badge className="gap-1 bg-accent text-accent-foreground">
                 <Star className="h-3 w-3" fill="currentColor" />
-                Gợi ý
+                {t('Gợi ý', 'Recommended')}
               </Badge>
             </div>
           )}
@@ -124,7 +127,7 @@ export function MenuCard({ item, index }: MenuCardProps) {
         <div className="space-y-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-medium text-card-foreground leading-tight">
-              {item.name}
+              {itemName}
             </h3>
             <span className="shrink-0 font-semibold text-primary">
               {formatVND(item.price)}
@@ -132,19 +135,22 @@ export function MenuCard({ item, index }: MenuCardProps) {
           </div>
 
           <p className="line-clamp-2 text-xs text-muted-foreground">
-            {item.description}
+            {itemDesc}
           </p>
 
           {item.tags && (
             <div className="flex flex-wrap gap-1 pt-1">
-              {item.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
-                >
-                  {tag}
-                </span>
-              ))}
+              {item.tags.map((tagObj, idx) => {
+                const tagLabel = typeof tagObj === 'object' ? (tagObj[lang] || tagObj.en) : tagObj
+                return (
+                  <span
+                    key={idx}
+                    className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"
+                  >
+                    {tagLabel}
+                  </span>
+                )
+              })}
             </div>
           )}
         </div>
@@ -162,7 +168,6 @@ export function MenuCard({ item, index }: MenuCardProps) {
         </Button>
       </motion.div>
 
-      {/* KHỐI 2: POPUP CHỌN TÙY CHỈNH (Được đưa ra ngoài hoàn toàn khỏi thẻ motion của món ăn) */}
       <AnimatePresence mode="wait">
         {showCustomize && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
@@ -181,16 +186,15 @@ export function MenuCard({ item, index }: MenuCardProps) {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="mb-4 flex items-center justify-between">
-                <h3 className="font-semibold text-foreground text-lg">{item.name}</h3>
+                <h3 className="font-semibold text-foreground text-lg">{itemName}</h3>
                 <Button variant="ghost" size="icon" onClick={handleClose} className="h-8 w-8 rounded-full">
                   <X className="h-4 w-4" />
                 </Button>
               </div>
 
               <div className="space-y-6">
-                {/* Ice Selection */}
                 <div>
-                  <label className="text-sm font-bold text-foreground mb-3 block">Lượng đá</label>
+                  <label className="text-sm font-bold text-foreground mb-3 block">{t('Lượng đá', 'Ice Level')}</label>
                   <div className="grid grid-cols-2 gap-2">
                     {(['none', 'light', 'normal', 'extra'] as const).map((option) => (
                       <button
@@ -207,10 +211,9 @@ export function MenuCard({ item, index }: MenuCardProps) {
                   </div>
                 </div>
 
-                {/* Sugar Selection */}
                 <div>
                   <label className="text-sm font-bold text-foreground mb-3 block">
-                    {isMilkBasedDrink ? 'Lượng sữa' : 'Lượng đường'}
+                    {isMilkBasedDrink ? t('Lượng sữa', 'Milk Level') : t('Lượng đường', 'Sugar Level')}
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     {(['none', 'light', 'normal', 'extra'] as const).map((option) => (
@@ -230,7 +233,7 @@ export function MenuCard({ item, index }: MenuCardProps) {
 
                 <Button onClick={handleAddItem} className="w-full h-12 rounded-2xl text-base font-bold shadow-lg">
                   <Plus className="h-5 w-5 mr-2" />
-                  Thêm vào giỏ - {formatVND(item.price)}
+                  {t('Thêm vào giỏ', 'Add to Cart')} - {formatVND(item.price)}
                 </Button>
               </div>
             </motion.div>

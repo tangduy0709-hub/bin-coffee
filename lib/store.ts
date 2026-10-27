@@ -1,18 +1,22 @@
 import { create } from 'zustand'
+import { useLanguageStore } from '@/lib/languageStore'
 
 export interface MenuItem {
   id: string
-  name: string
-  description: string
+  name: { vi: string; en: string }
+  description: { vi: string; en: string }
   price: number
   category: 'coffee' | 'tea' | 'pastry' | 'specialty'
   image: string
-  tags?: string[]
+  tags?: { vi: string; en: string }[]
   recommended?: boolean
 }
 
-export interface CartItem extends MenuItem {
+export interface CartItem extends Omit<MenuItem, 'name' | 'description' | 'tags'> {
   cartItemId: string
+  name: string // Tên món hiển thị theo ngôn ngữ hiện tại
+  description: string
+  tags?: string[]
   quantity: number
   customizations?: {
     size?: 'small' | 'medium' | 'large'
@@ -58,6 +62,12 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
   addItem: (item, customizations) => {
     set((state) => {
+      // Lấy ngôn ngữ hiện tại từ store ngôn ngữ
+      const currentLang = useLanguageStore.getState().lang
+      const localizedName = item.name[currentLang] || item.name.en
+      const localizedDesc = item.description[currentLang] || item.description.en
+      const localizedTags = item.tags?.map(t => t[currentLang] || t.en)
+
       const normalizedCustomizations =
         customizations &&
         customizations.ice === 'normal' &&
@@ -85,7 +95,15 @@ export const useCartStore = create<CartStore>((set, get) => ({
       return {
         items: [
           ...state.items,
-          { ...item, cartItemId, quantity: 1, customizations: normalizedCustomizations },
+          { 
+            ...item, 
+            name: localizedName,
+            description: localizedDesc,
+            tags: localizedTags,
+            cartItemId, 
+            quantity: 1, 
+            customizations: normalizedCustomizations 
+          },
         ],
       }
     })
@@ -156,53 +174,69 @@ export const useCartStore = create<CartStore>((set, get) => ({
   setOrder: (order) => set({ currentOrder: order }),
 }))
 
+// Danh sách Menu hỗ trợ song ngữ (Việt - Anh)
 export const menuItems: MenuItem[] = [
   {
     id: '3',
-    name: 'Bạc Xỉu',
-    description: 'Cà phê nhẹ nhàng pha nhiều sữa, vị mềm mịn',
+    name: { vi: 'Bạc Xỉu', en: 'Bac Xiu' },
+    description: { 
+      vi: 'Cà phê nhẹ nhàng pha nhiều sữa, vị mềm mịn', 
+      en: 'Smooth and creamy milk coffee with extra condensed milk' 
+    },
     price: 32000,
     category: 'coffee',
     image: '/images/bac-xiu.jpg',
-    tags: ['Mềm'],
+    tags: [{ vi: 'Mềm', en: 'Smooth' }],
     recommended: true,
   },
   {
     id: '4',
-    name: 'Trà Đào',
-    description: 'Trà đào đá tươi, thơm mùi đào',
+    name: { vi: 'Trà Đào', en: 'Peach Tea' },
+    description: { 
+      vi: 'Trà đào đá tươi, thơm mùi đào', 
+      en: 'Fresh iced peach tea with natural peach flavor' 
+    },
     price: 28000,
     category: 'tea',
     image: '/images/tra-dao.jpg',
-    tags: ['Trái cây'],
+    tags: [{ vi: 'Trái cây', en: 'Fruit' }],
   },
   {
     id: '5',
-    name: 'Nước Cam',
-    description: 'Nước cam vắt tươi, không đường',
+    name: { vi: 'Nước Cam', en: 'Fresh Orange Juice' },
+    description: { 
+      vi: 'Nước cam vắt tươi, tự nhiên', 
+      en: 'Freshly squeezed natural orange juice' 
+    },
     price: 35000,
     category: 'specialty',
     image: '/images/nuoc-cam.jpg',
-    tags: ['Tươi'],
+    tags: [{ vi: 'Tươi', en: 'Fresh' }],
   },
   {
     id: '1',
-    name: 'Cà Phê Đá',
-    description: 'Cà phê pha phin, phục vụ kèm đá',
+    name: { vi: 'Cà Phê Đá', en: 'Iced Black Coffee' },
+    description: { 
+      vi: 'Cà phê pha phin, phục vụ kèm đá', 
+      en: 'Traditional Vietnamese phin-filtered black coffee served with ice' 
+    },
     price: 28000,
     category: 'coffee',
     image: '/images/ca-phe-da.jpg',
-    tags: ['Tươi'],
+    tags: [{ vi: 'Tươi', en: 'Classic' }],
     recommended: false,
   },
   {
     id: '2',
-    name: 'Cà Phê Sữa',
-    description: 'Cà phê pha với sữa đặc, thơm và ngọt dịu',
+    name: { vi: 'Cà Phê Sữa', en: 'Vietnamese Milk Coffee' },
+    description: { 
+      vi: 'Cà phê pha với sữa đặc, thơm và ngọt dịu', 
+      en: 'Strong phin coffee blended with sweetened condensed milk' 
+    },
     price: 30000,
     category: 'coffee',
     image: '/images/ca-phe-sua.jpg',
-    tags: ['Ngọt'],
+    tags: [{ vi: 'Ngọt', en: 'Sweet' }],
     recommended: false,
   },
 ]

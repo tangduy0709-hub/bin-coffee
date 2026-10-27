@@ -1,15 +1,9 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Coffee, Leaf, Croissant, Sparkles } from 'lucide-react'
+import { Coffee, Leaf, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-const categories = [
-  { id: 'all', label: 'Tất cả', icon: Sparkles },
-  { id: 'coffee', label: 'Cà phê', icon: Coffee },
-  { id: 'tea', label: 'Trà', icon: Leaf },
-  { id: 'specialty', label: 'Đặc biệt', icon: Sparkles },
-]
+import { useLanguageStore } from '@/lib/languageStore'
 
 interface CategoryTabsProps {
   activeCategory: string
@@ -20,6 +14,15 @@ export function CategoryTabs({
   activeCategory,
   onCategoryChange,
 }: CategoryTabsProps) {
+  const { t } = useLanguageStore()
+
+  const categories = [
+    { id: 'all', label: t('Tất cả', 'All'), icon: Sparkles },
+    { id: 'coffee', label: t('Cà phê', 'Coffee'), icon: Coffee },
+    { id: 'tea', label: t('Trà', 'Tea'), icon: Leaf },
+    { id: 'specialty', label: t('Đặc biệt', 'Specialty'), icon: Sparkles },
+  ]
+
   return (
     <div className="hide-scrollbar flex gap-2 overflow-x-auto px-4 py-3">
       {categories.map((category) => {

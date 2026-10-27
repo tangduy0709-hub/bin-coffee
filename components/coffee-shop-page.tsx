@@ -109,7 +109,7 @@ export default function CoffeeShopPage({ entryToken }: CoffeeShopPageProps) {
             <div className="flex items-center gap-2">
               <MapPin className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium text-primary">
-                Bàn {tableNumber}
+                Table {tableNumber}
               </span>
             </div>
           </div>
@@ -132,10 +132,10 @@ export default function CoffeeShopPage({ entryToken }: CoffeeShopPageProps) {
       <section className="mt-2">
         <div className="mb-3 flex items-center justify-between px-4">
           <h2 className="font-serif text-xl font-semibold text-foreground">
-            Thực đơn E-Menu
+            Digital E-Menu
           </h2>
           <span className="text-sm text-muted-foreground">
-            {activeCategory === 'all' ? 'Tất cả món' : activeCategory}
+            {activeCategory === 'all' ? 'All Items' : activeCategory}
           </span>
         </div>
 

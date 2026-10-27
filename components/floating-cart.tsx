@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { ShoppingBag, Minus, Plus, X, Trash2, QrCode } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCartStore } from '@/lib/store'
+import { useLanguageStore } from '@/lib/languageStore'
 import { formatVND } from '@/lib/utils'
 import { useState } from 'react'
 import Image from 'next/image'
@@ -20,6 +21,7 @@ export function FloatingCart() {
 
   const { items, getTotal, getItemCount, updateQuantity, removeItem, placeOrder } =
     useCartStore()
+  const { t } = useLanguageStore()
   const itemCount = getItemCount()
   const total = getTotal()
 
@@ -127,7 +129,7 @@ export function FloatingCart() {
                 {itemCount}
               </span>
             </div>
-            <span className="font-medium">Xem giỏ hàng</span>
+            <span className="font-medium">{t('Xem giỏ hàng', 'View Cart')}</span>
             <span className="font-semibold">{formatVND(total)}</span>
           </motion.button>
         )}
@@ -156,9 +158,9 @@ export function FloatingCart() {
               <div className="flex items-center justify-between border-b border-border px-4 py-4">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="h-5 w-5 text-primary" />
-                  <h2 className="font-serif text-lg font-semibold">Giỏ hàng của bạn</h2>
+                  <h2 className="font-serif text-lg font-semibold">{t('Giỏ hàng của bạn', 'Your Cart')}</h2>
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    {itemCount} món
+                    {itemCount} {t('món', 'items')}
                   </span>
                 </div>
                 <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
@@ -208,7 +210,7 @@ export function FloatingCart() {
                 </AnimatePresence>
 
                 {items.length === 0 && (
-                  <div className="py-8 text-center text-muted-foreground">Giỏ hàng trống</div>
+                  <div className="py-8 text-center text-muted-foreground">{t('Giỏ hàng trống', 'Your cart is empty')}</div>
                 )}
               </div>
 
@@ -216,11 +218,11 @@ export function FloatingCart() {
               {items.length > 0 && (
                 <div className="border-t border-border px-4 py-4">
                   <div className="mb-4 flex items-center justify-between">
-                    <span className="text-muted-foreground">Tổng thanh toán</span>
+                    <span className="text-muted-foreground">{t('Tổng thanh toán', 'Total Payment')}</span>
                     <span className="text-xl font-semibold text-foreground">{formatVND(total)}</span>
                   </div>
                   <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full rounded-full py-6 text-base font-semibold">
-                    {isSubmitting ? 'Đang gửi đơn...' : 'Xác nhận đặt món'}
+                    {isSubmitting ? t('Đang gửi đơn...', 'Submitting order...') : t('Xác nhận đặt món', 'Confirm Order')}
                   </Button>
                 </div>
               )}
@@ -250,9 +252,9 @@ export function FloatingCart() {
                 <QrCode className="h-8 w-8" />
               </div>
               
-              <h2 className="text-xl font-bold text-foreground mb-1">Đơn hàng đã gửi tới quầy!</h2>
+              <h2 className="text-xl font-bold text-foreground mb-1">{t('Đơn hàng đã gửi tới quầy!', 'Order sent to counter!')}</h2>
               <p className="text-sm text-muted-foreground mb-6">
-                Vui lòng quét mã QR dưới đây bằng ứng dụng ngân hàng để thanh toán.
+                {t('Vui lòng quét mã QR dưới đây bằng ứng dụng ngân hàng để thanh toán.', 'Please scan the QR code below using your banking app to pay.')}
               </p>
 
               <div className="bg-white p-3 rounded-2xl shadow-sm border border-border w-full aspect-square relative mb-6">
@@ -260,18 +262,18 @@ export function FloatingCart() {
                   <img src={qrUrl} alt="Mã QR Thanh Toán" className="w-full h-full object-contain rounded-xl" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-muted rounded-xl animate-pulse">
-                    Đang tạo mã...
+                    {t('Đang tạo mã...', 'Generating QR...')}
                   </div>
                 )}
               </div>
 
               <div className="flex items-center justify-between w-full bg-muted/50 p-4 rounded-2xl mb-6">
-                <span className="text-sm font-medium text-muted-foreground">Cần thanh toán</span>
+                <span className="text-sm font-medium text-muted-foreground">{t('Cần thanh toán', 'Total Due')}</span>
                 <span className="text-xl font-bold text-primary">{formatVND(qrAmount)}</span>
               </div>
 
               <Button onClick={handleCloseAll} className="w-full rounded-full py-6 text-base font-semibold">
-                Đóng & Hoàn tất
+                {t('Đóng & Hoàn tất', 'Close & Finish')}
               </Button>
             </motion.div>
           </div>
